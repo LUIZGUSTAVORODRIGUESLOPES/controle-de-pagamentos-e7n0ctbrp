@@ -35,6 +35,7 @@ export interface UserRecord {
   id: string
   email: string
   name: string
+  role?: 'admin' | 'user' | string
   avatar?: string
   created: string
   updated: string

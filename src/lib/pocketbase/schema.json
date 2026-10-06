@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-10-06T12:34:53.475Z",
+  "generatedAt": "2026-10-06T12:45:18.064Z",
   "collections": [
     {
       "name": "users",
       "type": "auth",
       "apiRules": {
-        "list": "id = @request.auth.id",
-        "view": "id = @request.auth.id",
+        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || id = @request.auth.id)",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || id = @request.auth.id)",
         "create": "",
         "update": "id = @request.auth.id",
         "delete": "id = @request.auth.id"
@@ -37,6 +37,13 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "role",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["admin", "user"]
         }
       ],
       "indexes": [
@@ -139,6 +146,82 @@
         "CREATE INDEX idx_pagamentos_data ON pagamentos (Data_Pagamento DESC)",
         "CREATE INDEX idx_pagamentos_user ON pagamentos (user)",
         "CREATE INDEX idx_pagamentos_user_data ON pagamentos (user, Data_Pagamento DESC)"
+      ]
+    },
+    {
+      "name": "reimbursements",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "view": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "create": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "update": "@request.auth.id != '' && @request.auth.role = 'admin'",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'admin'"
+      },
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "reference_year",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "base_salary",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "includes_abono",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dissidio_amount",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_amount",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["pending", "paid"]
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_reimbursements_user ON reimbursements (user)",
+        "CREATE INDEX idx_reimbursements_year ON reimbursements (reference_year DESC)",
+        "CREATE INDEX idx_reimbursements_status ON reimbursements (status)"
       ]
     }
   ]

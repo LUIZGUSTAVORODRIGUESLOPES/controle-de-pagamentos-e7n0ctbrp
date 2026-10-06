@@ -4,10 +4,12 @@ import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AuthProvider } from '@/context/AuthContext'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
+import { AdminRoute } from '@/components/AdminRoute'
 import Layout from '@/components/Layout'
 
 // Pages
 import Index from './pages/Index'
+import Reimbursements from './pages/Reimbursements'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import ForgotPassword from './pages/ForgotPassword'
@@ -40,6 +42,14 @@ const App = () => (
             }
           >
             <Route path="/" element={<Index />} />
+            <Route
+              path="/reimbursements"
+              element={
+                <AdminRoute>
+                  <Reimbursements />
+                </AdminRoute>
+              }
+            />
           </Route>
 
           {/* 404 Route */}
