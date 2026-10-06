@@ -37,6 +37,7 @@ export interface UserRecord {
   name: string
   role?: 'admin' | 'user' | string
   avatar?: string
+  monthly_salary?: number
   created: string
   updated: string
 }
