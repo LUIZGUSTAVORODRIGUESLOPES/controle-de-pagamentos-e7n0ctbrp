@@ -51,12 +51,12 @@ export const reimbursementsService = {
   },
 
   /**
-   * Check if there is already a pending monthly reimbursement for a user and period.
+   * Check if there is already a non-paid (pending or partial) monthly reimbursement for a user and period.
    */
   async hasPendingMonthlyForPeriod(userId: string, period: string): Promise<boolean> {
     try {
       const records = await pb.collection('reimbursements').getList<ReimbursementRecord>(1, 1, {
-        filter: `user = "${userId}" && type = "mensal" && status = "pending" && reference_period = "${period}"`,
+        filter: `user = "${userId}" && type = "mensal" && (status = "pending" || status = "partial") && reference_period = "${period}"`,
         requestKey: null,
       })
       return records.totalItems > 0
@@ -71,6 +71,14 @@ export const reimbursementsService = {
   async createMonthly(input: ReimbursementMonthlyInput): Promise<ReimbursementRecord> {
     const totalAmount = Math.round((Number(input.total_amount) + Number.EPSILON) * 100) / 100
     const baseSalary = Number(input.base_salary) || totalAmount
+    const amountPaid = Math.round((Number(input.amount_paid || 0) + Number.EPSILON) * 100) / 100
+
+    let status: ReimbursementStatus = 'pending'
+    if (amountPaid >= totalAmount && totalAmount > 0) {
+      status = 'paid'
+    } else if (amountPaid > 0) {
+      status = 'partial'
+    }
 
     const record = await pb.collection('reimbursements').create<ReimbursementRecord>(
       {
@@ -81,7 +89,8 @@ export const reimbursementsService = {
         includes_abono: false,
         dissidio_amount: 0,
         total_amount: totalAmount,
-        status: 'pending',
+        amount_paid: amountPaid,
+        status,
       },
       {
         expand: 'user',
@@ -103,6 +112,14 @@ export const reimbursementsService = {
     })
 
     const year = Number(input.reference_year)
+    const amountPaid = Math.round((Number(input.amount_paid || 0) + Number.EPSILON) * 100) / 100
+
+    let status: ReimbursementStatus = 'pending'
+    if (amountPaid >= breakdown.totalAmount && breakdown.totalAmount > 0) {
+      status = 'paid'
+    } else if (amountPaid > 0) {
+      status = 'partial'
+    }
 
     const record = await pb.collection('reimbursements').create<ReimbursementRecord>(
       {
@@ -114,7 +131,8 @@ export const reimbursementsService = {
         includes_abono: Boolean(input.includes_abono),
         dissidio_amount: Math.abs(Number(input.dissidio_amount) || 0),
         total_amount: breakdown.totalAmount,
-        status: 'pending',
+        amount_paid: amountPaid,
+        status,
       },
       {
         expand: 'user',
@@ -145,12 +163,56 @@ export const reimbursementsService = {
   },
 
   /**
-   * Update reimbursement status (e.g. 'paid').
+   * Update reimbursement status (e.g. 'paid', 'partial', 'pending').
    */
-  async updateStatus(id: string, status: ReimbursementStatus): Promise<ReimbursementRecord> {
+  async updateStatus(
+    id: string,
+    status: ReimbursementStatus,
+    amountPaid?: number,
+  ): Promise<ReimbursementRecord> {
+    const payload: Partial<ReimbursementRecord> = { status }
+    if (amountPaid !== undefined) {
+      payload.amount_paid = Math.round((Number(amountPaid) + Number.EPSILON) * 100) / 100
+    }
     return pb
       .collection('reimbursements')
-      .update<ReimbursementRecord>(id, { status }, { expand: 'user' })
+      .update<ReimbursementRecord>(id, payload, { expand: 'user' })
+  },
+
+  /**
+   * Register a payment for a reimbursement:
+   * Adds paymentValue to existing amount_paid (or sets it if mode is 'set'),
+   * automatically recalculating the status:
+   * - 'paid' if amount_paid >= total_amount
+   * - 'partial' if amount_paid > 0 and < total_amount
+   * - 'pending' if amount_paid <= 0
+   */
+  async registerPayment(
+    reimbursement: ReimbursementRecord,
+    paymentValueToAdd: number,
+  ): Promise<ReimbursementRecord> {
+    const currentPaid = Number(reimbursement.amount_paid || 0)
+    const newAmountPaid =
+      Math.round((currentPaid + Number(paymentValueToAdd) + Number.EPSILON) * 100) / 100
+    const totalAmount = Number(reimbursement.total_amount || 0)
+
+    let newStatus: ReimbursementStatus = 'pending'
+    if (newAmountPaid >= totalAmount - 0.001) {
+      newStatus = 'paid'
+    } else if (newAmountPaid > 0.001) {
+      newStatus = 'partial'
+    } else {
+      newStatus = 'pending'
+    }
+
+    return pb.collection('reimbursements').update<ReimbursementRecord>(
+      reimbursement.id,
+      {
+        amount_paid: Math.max(0, newAmountPaid),
+        status: newStatus,
+      },
+      { expand: 'user' },
+    )
   },
 
   /**

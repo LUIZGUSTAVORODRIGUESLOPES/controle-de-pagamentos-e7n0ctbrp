@@ -185,21 +185,21 @@ export default function Reimbursements() {
     }
   }
 
-  // Check if current logged-in user ALREADY has a pending monthly reimbursement for current month
+  // Check if current logged-in user ALREADY has an open monthly reimbursement for current month
   const hasPendingMonthlyForCurrentMonth = useMemo(() => {
     if (!authUser?.id) return false
     return reimbursements.some(
       (r) =>
         r.user === authUser.id &&
         r.type === 'mensal' &&
-        r.status === 'pending' &&
+        r.status !== 'paid' &&
         r.reference_period === brazilCurrent.period,
     )
   }, [reimbursements, authUser?.id, brazilCurrent.period])
 
   // Filter lists by status and type
   const pendingMonthlyList = useMemo(() => {
-    return reimbursements.filter((r) => r.type === 'mensal' && r.status === 'pending')
+    return reimbursements.filter((r) => r.type === 'mensal' && r.status !== 'paid')
   }, [reimbursements])
 
   const paidHistoryList = useMemo(() => {
@@ -237,27 +237,35 @@ export default function Reimbursements() {
   // Summary statistics
   const stats = useMemo(() => {
     let totalPago = 0
-    let totalPendenteMensal = 0
-    let totalPendenteAnual = 0
+    let totalSaldoPendenteMensal = 0
+    let totalSaldoPendenteAnual = 0
+    let countParciais = 0
 
     for (const r of reimbursements) {
-      if (r.status === 'paid') {
-        totalPago += r.total_amount
-      } else {
+      const amountPaid = Number(r.amount_paid ?? (r.status === 'paid' ? r.total_amount : 0))
+      const saldo = Math.max(0, r.total_amount - amountPaid)
+      totalPago += amountPaid
+
+      if (r.status === 'partial') {
+        countParciais += 1
+      }
+
+      if (r.status !== 'paid') {
         if (r.type === 'mensal') {
-          totalPendenteMensal += r.total_amount
+          totalSaldoPendenteMensal += saldo
         } else {
-          totalPendenteAnual += r.total_amount
+          totalSaldoPendenteAnual += saldo
         }
       }
     }
 
     return {
       totalPago,
-      totalPendenteMensal,
-      totalPendenteAnual,
-      totalPendenteGeral: totalPendenteMensal + totalPendenteAnual,
+      totalSaldoPendenteMensal,
+      totalSaldoPendenteAnual,
+      totalSaldoPendenteGeral: totalSaldoPendenteMensal + totalSaldoPendenteAnual,
       countMensalPendente: pendingMonthlyList.length,
+      countParciais,
       countPago: paidHistoryList.length,
       countTotal: reimbursements.length,
     }
@@ -291,6 +299,7 @@ export default function Reimbursements() {
         reference_period: brazilCurrent.period,
         base_salary: salary,
         total_amount: salary,
+        amount_paid: 0,
       })
 
       toast({
@@ -312,21 +321,88 @@ export default function Reimbursements() {
     }
   }
 
-  // Handle Mark as Paid
-  const handleMarkAsPaid = async (item: ReimbursementRecord) => {
+  // Payment Confirmation Modal State
+  const [payingRecord, setPayingRecord] = useState<ReimbursementRecord | null>(null)
+  const [paymentAmountInput, setPaymentAmountInput] = useState<string>('')
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState<boolean>(false)
+
+  // Open Payment Modal
+  const handleOpenPaymentModal = (item: ReimbursementRecord) => {
+    setPayingRecord(item)
+    const paidSoFar = Number(item.amount_paid || 0)
+    const remainingBalance = Math.max(0, item.total_amount - paidSoFar)
+    // Sugerir o saldo restante por padrão
+    setPaymentAmountInput(
+      remainingBalance.toLocaleString('pt-BR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+    )
+  }
+
+  // Confirm payment in modal (recalculates status automatically)
+  const handleConfirmPayment = async () => {
+    if (!payingRecord) return
+    const normalized = paymentAmountInput.replace(/\./g, '').replace(',', '.')
+    const parsed = parseFloat(normalized)
+
+    if (isNaN(parsed) || parsed <= 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Valor inválido',
+        description: 'Informe um valor pago maior que zero.',
+      })
+      return
+    }
+
+    try {
+      setIsSubmittingPayment(true)
+      const updated = await reimbursementsService.registerPayment(payingRecord, parsed)
+
+      const remainingBalance = Math.max(0, updated.total_amount - (updated.amount_paid || 0))
+      let statusDesc = ''
+      if (updated.status === 'paid') {
+        statusDesc = 'Quitado integralmente (Status: Pago)!'
+      } else if (updated.status === 'partial') {
+        statusDesc = `Pagamento parcial registrado! Restam ${formatBRL(remainingBalance)} a receber.`
+      }
+
+      toast({
+        title: 'Pagamento registrado com sucesso!',
+        description: statusDesc,
+      })
+
+      setPayingRecord(null)
+      await fetchData()
+    } catch (err: any) {
+      console.error(err)
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao registrar pagamento',
+        description: err?.message || 'Não foi possível registrar o pagamento.',
+      })
+    } finally {
+      setIsSubmittingPayment(false)
+    }
+  }
+
+  // Quitar integralmente direto (atalho)
+  const handlePayInFullDirect = async (item: ReimbursementRecord) => {
     try {
       setUpdatingId(item.id)
-      await reimbursementsService.updateStatus(item.id, 'paid')
+      const paidSoFar = Number(item.amount_paid || 0)
+      const remainingBalance = Math.max(0, item.total_amount - paidSoFar)
+      await reimbursementsService.registerPayment(item, remainingBalance)
       toast({
-        title: 'Pagamento confirmado!',
-        description: `Lançamento de ${formatBRL(item.total_amount)} marcado como Pago.`,
+        title: 'Pagamento total confirmado!',
+        description: `Lançamento quitado integralmente com sucesso.`,
       })
       await fetchData()
     } catch (err: any) {
       console.error(err)
       toast({
         variant: 'destructive',
-        title: 'Erro ao confirmar pagamento',
+        title: 'Erro ao confirmar quitação total',
         description: err?.message || 'Não foi possível atualizar o status.',
       })
     } finally {
@@ -590,6 +666,41 @@ export default function Reimbursements() {
           </div>
         </div>
 
+        {/* Banner de Destaque do Saldo Devedor / Aumento por Dissídio */}
+        {stats.totalSaldoPendenteGeral > 0 && (
+          <div className="rounded-xl border-2 border-red-300 bg-gradient-to-r from-red-50 via-amber-50 to-orange-50 p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-red-100 text-red-700 flex items-center justify-center shrink-0 mt-0.5">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-bold text-red-950">
+                    Atenção: Saldo devedor da empresa em aberto
+                  </h3>
+                  <Badge className="bg-red-600 text-white hover:bg-red-600 border-none text-[11px] font-semibold">
+                    R$ 116,51 / mês desde Agosto/2026
+                  </Badge>
+                </div>
+                <p className="text-xs text-red-800/90 mt-1 leading-relaxed">
+                  A partir de Agosto/2026 o salário base teve aumento por dissídio (de R$ 1.754,73
+                  para R$ 1.871,24), mas a empresa continuou creditando o valor antigo. Foi gerado
+                  um saldo a favor do executivo de <strong>R$ 116,51 por mês</strong> nos períodos
+                  em aberto (Ago a Out/2026).
+                </p>
+              </div>
+            </div>
+            <div className="bg-white/90 border border-red-200 rounded-lg px-4 py-2 text-right shrink-0">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                Total a Receber
+              </span>
+              <span className="text-xl font-extrabold text-red-700 tabular-nums">
+                {formatBRL(stats.totalSaldoPendenteGeral)}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Global Stats Strip */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs">
@@ -607,7 +718,7 @@ export default function Reimbursements() {
                   onClick={() => {
                     setEditingSalaryUser(loggedInUserRecord)
                     setSalaryInput(
-                      (loggedInUserRecord.monthly_salary || 15000).toLocaleString('pt-BR', {
+                      (loggedInUserRecord.monthly_salary || 1871.24).toLocaleString('pt-BR', {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       }),
@@ -626,24 +737,24 @@ export default function Reimbursements() {
             </p>
           </div>
 
-          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3.5 shadow-xs">
-            <div className="flex items-center justify-between text-xs text-amber-800 font-medium">
-              <span>Mensais Pendentes</span>
-              <Clock className="w-4 h-4 text-amber-600" />
+          <div className="rounded-xl border border-red-200 bg-red-50/70 p-3.5 shadow-xs">
+            <div className="flex items-center justify-between text-xs text-red-800 font-semibold">
+              <span>Saldo em Aberto (A Receber)</span>
+              <Clock className="w-4 h-4 text-red-600" />
             </div>
-            <span className="text-lg font-bold text-amber-800 mt-1 block tabular-nums">
-              {formatBRL(stats.totalPendenteMensal)}
+            <span className="text-lg font-bold text-red-700 mt-1 block tabular-nums">
+              {formatBRL(stats.totalSaldoPendenteGeral)}
             </span>
-            <p className="text-[10px] text-amber-700 mt-0.5">
-              {stats.countMensalPendente === 1
-                ? '1 lançamento a pagar'
-                : `${stats.countMensalPendente} lançamentos a pagar`}
+            <p className="text-[10px] text-red-800 mt-0.5">
+              {stats.countParciais > 0
+                ? `${stats.countParciais} lançamento(s) com pagamento parcial`
+                : `${stats.countMensalPendente} lançamento(s) em aberto`}
             </p>
           </div>
 
           <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5 shadow-xs">
             <div className="flex items-center justify-between text-xs text-emerald-800 font-medium">
-              <span>Total Pago (Histórico)</span>
+              <span>Total Pago Realizado</span>
               <CheckCircle className="w-4 h-4 text-emerald-600" />
             </div>
             <span className="text-lg font-bold text-emerald-800 mt-1 block tabular-nums">
@@ -652,7 +763,7 @@ export default function Reimbursements() {
             <p className="text-[10px] text-emerald-700 mt-0.5">
               {stats.countPago === 1
                 ? '1 reembolso liquidado'
-                : `${stats.countPago} reembolsos liquidados`}
+                : `${stats.countPago} reembolsos quitados`}
             </p>
           </div>
 
@@ -699,7 +810,7 @@ export default function Reimbursements() {
           </TabsList>
 
           {/* ======================================================== */}
-          {/* ABA 1: Lançamentos Mensais (Pendentes) */}
+          {/* ABA 1: Lançamentos Mensais (Pendentes e Parciais) */}
           {/* ======================================================== */}
           <TabsContent value="mensais" className="mt-4 space-y-4">
             <Card className="border-slate-200 shadow-sm bg-white overflow-hidden">
@@ -707,14 +818,19 @@ export default function Reimbursements() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                      <span>Lançamentos Mensais Pendentes</span>
+                      <span>Lançamentos Mensais em Aberto</span>
                       <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200 text-xs px-2 py-0.5">
-                        {pendingMonthlyList.length} pendente(s)
+                        {pendingMonthlyList.length} lançamento(s)
                       </Badge>
+                      {stats.countParciais > 0 && (
+                        <Badge className="bg-red-100 text-red-800 hover:bg-red-100 border-red-200 text-xs px-2 py-0.5">
+                          {stats.countParciais} com saldo devedor
+                        </Badge>
+                      )}
                     </CardTitle>
                     <CardDescription className="text-xs text-slate-500 mt-0.5">
-                      Controle de adiantamentos e pagamentos mensais. Ajuste valores de
-                      descontos/acréscimos e confirme a quitação.
+                      Controle de pagamentos mensais e suporte a pagamentos parciais com saldo a
+                      receber destacado.
                     </CardDescription>
                   </div>
 
@@ -745,8 +861,8 @@ export default function Reimbursements() {
                       Nenhum lançamento mensal pendente
                     </h4>
                     <p className="text-xs text-slate-500 max-w-md mt-1">
-                      Todos os pagamentos mensais foram confirmados ou ainda não foram gerados para
-                      este mês.
+                      Todos os pagamentos mensais foram confirmados integralmente ou ainda não foram
+                      gerados.
                     </p>
                     <Button
                       onClick={handleGenerateMonthly}
@@ -764,9 +880,11 @@ export default function Reimbursements() {
                         <tr>
                           <th className="p-3">Período</th>
                           <th className="p-3">Executivo / Usuário</th>
+                          <th className="p-3 text-right">Salário Base</th>
                           <th className="p-3 text-right">Valor Total</th>
+                          <th className="p-3 text-right">Valor Pago</th>
+                          <th className="p-3 text-right">Saldo a Receber</th>
                           <th className="p-3">Status</th>
-                          <th className="p-3">Data Geração</th>
                           <th className="p-3 text-right">Ações</th>
                         </tr>
                       </thead>
@@ -775,9 +893,19 @@ export default function Reimbursements() {
                           const isUpdating = updatingId === item.id
                           const execName = item.expand?.user?.name || 'Executivo'
                           const execEmail = item.expand?.user?.email || ''
+                          const valorPago = Number(item.amount_paid || 0)
+                          const saldoReceber = Math.max(0, item.total_amount - valorPago)
+                          const isPartial = item.status === 'partial'
 
                           return (
-                            <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                            <tr
+                              key={item.id}
+                              className={`transition-colors ${
+                                isPartial
+                                  ? 'bg-red-50/60 hover:bg-red-100/60 border-l-4 border-l-red-500'
+                                  : 'hover:bg-slate-50/70'
+                              }`}
+                            >
                               <td className="p-3 font-semibold text-slate-900 whitespace-nowrap">
                                 <div className="flex items-center gap-1.5">
                                   <Calendar className="w-3.5 h-3.5 text-slate-400" />
@@ -788,6 +916,11 @@ export default function Reimbursements() {
                                       'mensal',
                                     )}
                                   </span>
+                                  {isPartial && (
+                                    <span className="text-[10px] font-semibold text-red-700 bg-red-100 border border-red-200 px-1.5 py-0.2 rounded">
+                                      Déficit dissídio
+                                    </span>
+                                  )}
                                 </div>
                               </td>
 
@@ -798,19 +931,46 @@ export default function Reimbursements() {
                                 )}
                               </td>
 
+                              <td className="p-3 text-right text-slate-600 tabular-nums whitespace-nowrap">
+                                {item.base_salary ? formatBRL(item.base_salary) : '-'}
+                              </td>
+
                               <td className="p-3 text-right font-bold text-sm text-slate-900 tabular-nums whitespace-nowrap">
                                 {formatBRL(item.total_amount)}
                               </td>
 
-                              <td className="p-3 whitespace-nowrap">
-                                <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200 text-[11px] px-2 py-0.5 font-medium flex items-center gap-1 w-fit">
-                                  <Clock className="w-3 h-3 text-amber-600" />
-                                  Pendente
-                                </Badge>
+                              <td className="p-3 text-right font-medium text-sm text-emerald-700 tabular-nums whitespace-nowrap">
+                                {formatBRL(valorPago)}
                               </td>
 
-                              <td className="p-3 text-slate-500 whitespace-nowrap text-[11px]">
-                                {formatDatePtBR(item.created)}
+                              <td className="p-3 text-right whitespace-nowrap">
+                                {saldoReceber > 0.001 ? (
+                                  <span
+                                    className={`inline-block font-extrabold text-sm tabular-nums px-2 py-0.5 rounded ${
+                                      isPartial
+                                        ? 'bg-red-600 text-white shadow-xs'
+                                        : 'bg-amber-100 text-amber-900'
+                                    }`}
+                                  >
+                                    {formatBRL(saldoReceber)}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 font-medium">R$ 0,00</span>
+                                )}
+                              </td>
+
+                              <td className="p-3 whitespace-nowrap">
+                                {isPartial ? (
+                                  <Badge className="bg-red-100 text-red-800 hover:bg-red-100 border-red-300 text-[11px] px-2 py-0.5 font-bold flex items-center gap-1 w-fit">
+                                    <AlertCircle className="w-3 h-3 text-red-600" />
+                                    Pagamento Parcial
+                                  </Badge>
+                                ) : (
+                                  <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200 text-[11px] px-2 py-0.5 font-medium flex items-center gap-1 w-fit">
+                                    <Clock className="w-3 h-3 text-amber-600" />
+                                    Pendente
+                                  </Badge>
+                                )}
                               </td>
 
                               <td className="p-3 text-right whitespace-nowrap">
@@ -827,19 +987,19 @@ export default function Reimbursements() {
                                     Editar
                                   </Button>
 
-                                  {/* Botão Confirmar Pagamento */}
+                                  {/* Botão Confirmar Pagamento (abre modal com input rápido de quanto foi pago) */}
                                   <Button
                                     size="sm"
-                                    onClick={() => handleMarkAsPaid(item)}
+                                    onClick={() => handleOpenPaymentModal(item)}
                                     disabled={isUpdating}
-                                    title="Confirmar pagamento e mudar status para Pago"
-                                    className="h-7 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+                                    title="Informar quanto foi pago e atualizar status automaticamente"
+                                    className={`h-7 text-xs font-semibold text-white ${
+                                      isPartial
+                                        ? 'bg-red-600 hover:bg-red-700'
+                                        : 'bg-emerald-600 hover:bg-emerald-700'
+                                    }`}
                                   >
-                                    {isUpdating ? (
-                                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                                    ) : (
-                                      <CheckCircle className="w-3 h-3 mr-1" />
-                                    )}
+                                    <DollarSign className="w-3 h-3 mr-0.5" />
                                     Confirmar Pagamento
                                   </Button>
 
@@ -1256,6 +1416,8 @@ export default function Reimbursements() {
                           <th className="p-3 text-right">Salário Base</th>
                           <th className="p-3 text-right">Abono / Dissídio</th>
                           <th className="p-3 text-right">Valor Total</th>
+                          <th className="p-3 text-right">Valor Pago</th>
+                          <th className="p-3 text-right">Saldo a Receber</th>
                           <th className="p-3">Status</th>
                           <th className="p-3 text-right">Ações</th>
                         </tr>
@@ -1265,6 +1427,8 @@ export default function Reimbursements() {
                           const execName = item.expand?.user?.name || 'Executivo'
                           const execEmail = item.expand?.user?.email || ''
                           const isMensal = item.type === 'mensal'
+                          const valorPago = Number(item.amount_paid ?? item.total_amount)
+                          const saldo = Math.max(0, item.total_amount - valorPago)
 
                           return (
                             <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
@@ -1319,8 +1483,16 @@ export default function Reimbursements() {
                                 ) : null}
                               </td>
 
-                              <td className="p-3 text-right font-bold text-sm text-emerald-700 tabular-nums whitespace-nowrap">
+                              <td className="p-3 text-right font-bold text-sm text-slate-900 tabular-nums whitespace-nowrap">
                                 {formatBRL(item.total_amount)}
+                              </td>
+
+                              <td className="p-3 text-right font-bold text-sm text-emerald-700 tabular-nums whitespace-nowrap">
+                                {formatBRL(valorPago)}
+                              </td>
+
+                              <td className="p-3 text-right text-slate-500 tabular-nums whitespace-nowrap">
+                                {saldo > 0.001 ? formatBRL(saldo) : 'R$ 0,00'}
                               </td>
 
                               <td className="p-3 whitespace-nowrap">
@@ -1520,6 +1692,154 @@ export default function Reimbursements() {
       </Dialog>
 
       {/* ======================================================== */}
+      {/* MODAL: Informar Pagamento (Suporte a Pagamentos Parciais) */}
+      {/* ======================================================== */}
+      <Dialog
+        open={!!payingRecord}
+        onOpenChange={(open) => {
+          if (!open) setPayingRecord(null)
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-2">
+              <DollarSign className="w-5 h-5" />
+            </div>
+            <DialogTitle>Confirmar Pagamento</DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 pt-1">
+              Informe o valor a ser pago para o período{' '}
+              <strong>
+                {payingRecord
+                  ? formatPeriodDisplay(
+                      payingRecord.reference_period,
+                      payingRecord.reference_year,
+                      payingRecord.type,
+                    )
+                  : ''}
+              </strong>{' '}
+              de <strong>{payingRecord?.expand?.user?.name || 'Executivo'}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+
+          {payingRecord && (
+            <div className="space-y-4 py-2">
+              {/* Quadro resumo do lançamento */}
+              <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-1.5 text-xs">
+                <div className="flex justify-between text-slate-600">
+                  <span>Valor Total do Lançamento:</span>
+                  <strong className="text-slate-900 tabular-nums">
+                    {formatBRL(payingRecord.total_amount)}
+                  </strong>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>Valor Já Pago Anteriormente:</span>
+                  <span className="text-emerald-700 font-semibold tabular-nums">
+                    {formatBRL(payingRecord.amount_paid || 0)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-slate-700 pt-1 border-t border-slate-200">
+                  <span className="font-semibold">Saldo Atual a Receber:</span>
+                  <span className="font-bold text-red-600 text-sm tabular-nums">
+                    {formatBRL(
+                      Math.max(0, payingRecord.total_amount - (payingRecord.amount_paid || 0)),
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              {/* Input do valor a pagar nesta operação */}
+              <div className="space-y-1.5">
+                <Label htmlFor="paymentInput" className="text-xs font-semibold text-slate-700">
+                  Quanto está sendo pago agora? (R$) <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium">
+                    R$
+                  </span>
+                  <Input
+                    id="paymentInput"
+                    type="text"
+                    value={paymentAmountInput}
+                    onChange={(e) => setPaymentAmountInput(e.target.value)}
+                    placeholder="0,00"
+                    className="pl-9 font-semibold text-base tabular-nums text-slate-900"
+                    autoFocus
+                    disabled={isSubmittingPayment}
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Esse valor será somado ao total já pago. Se quitar o total, o status mudará para{' '}
+                  <strong className="text-emerald-700">Pago</strong>; se restar saldo, ficará como{' '}
+                  <strong className="text-red-600">Pagamento Parcial</strong>.
+                </p>
+              </div>
+
+              {/* Botões rápidos de atalho */}
+              <div className="flex items-center gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const saldo = Math.max(
+                      0,
+                      payingRecord.total_amount - (payingRecord.amount_paid || 0),
+                    )
+                    setPaymentAmountInput(
+                      saldo.toLocaleString('pt-BR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }),
+                    )
+                  }}
+                  className="text-[11px] h-7 text-slate-700 border-slate-300"
+                >
+                  Quitar Saldo Restante
+                </Button>
+                {payingRecord.type === 'mensal' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setPaymentAmountInput('116,51')
+                    }}
+                    className="text-[11px] h-7 text-red-700 border-red-200 bg-red-50 hover:bg-red-100"
+                  >
+                    Diferença Dissídio (R$ 116,51)
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0 mt-2">
+            <Button
+              variant="outline"
+              onClick={() => setPayingRecord(null)}
+              disabled={isSubmittingPayment}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleConfirmPayment}
+              disabled={isSubmittingPayment}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+            >
+              {isSubmittingPayment ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Registrando Pagamento...
+                </>
+              ) : (
+                'Salvar Pagamento'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================== */}
       {/* MODAL 3: Confirmação de Exclusão */}
       {/* ======================================================== */}
       <Dialog
@@ -1626,8 +1946,20 @@ export default function Reimbursements() {
               </div>
               <div>
                 <span className="text-slate-500 block font-medium">Status do Pagamento:</span>
-                <span className="text-slate-900 font-bold uppercase text-emerald-700">
-                  {receiptRecord.status === 'paid' ? 'Pago / Liquidado' : 'Pendente'}
+                <span
+                  className={`text-slate-900 font-bold uppercase ${
+                    receiptRecord.status === 'paid'
+                      ? 'text-emerald-700'
+                      : receiptRecord.status === 'partial'
+                        ? 'text-red-700'
+                        : 'text-amber-700'
+                  }`}
+                >
+                  {receiptRecord.status === 'paid'
+                    ? 'Pago / Liquidado'
+                    : receiptRecord.status === 'partial'
+                      ? 'Pagamento Parcial'
+                      : 'Pendente'}
                 </span>
               </div>
             </div>
@@ -1695,10 +2027,32 @@ export default function Reimbursements() {
                   ) : null}
                   <tr className="bg-slate-50 font-bold border-t-2 border-slate-300">
                     <td className="p-3 text-slate-900 text-sm">VALOR TOTAL DO REEMBOLSO</td>
-                    <td className="p-3 text-right text-base text-emerald-700">
+                    <td className="p-3 text-right text-base text-slate-900">
                       {formatBRL(receiptRecord.total_amount)}
                     </td>
                   </tr>
+                  <tr>
+                    <td className="p-2.5 font-bold text-emerald-800">VALOR JÁ PAGO</td>
+                    <td className="p-2.5 text-right font-bold text-base text-emerald-700">
+                      {formatBRL(
+                        receiptRecord.amount_paid ??
+                          (receiptRecord.status === 'paid' ? receiptRecord.total_amount : 0),
+                      )}
+                    </td>
+                  </tr>
+                  {receiptRecord.status !== 'paid' && (
+                    <tr className="bg-red-50 text-red-900 font-bold">
+                      <td className="p-2.5 font-bold text-red-800">SALDO REMANESCENTE A RECEBER</td>
+                      <td className="p-2.5 text-right font-bold text-base text-red-700">
+                        {formatBRL(
+                          Math.max(
+                            0,
+                            receiptRecord.total_amount - Number(receiptRecord.amount_paid || 0),
+                          ),
+                        )}
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

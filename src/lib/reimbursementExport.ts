@@ -101,6 +101,8 @@ export function exportReimbursementsToCsv(
     'Abono Pecuniário',
     'Dissídio (R$)',
     'Valor Total (R$)',
+    'Valor Pago (R$)',
+    'Saldo a Receber (R$)',
     'Status',
   ]
 
@@ -120,7 +122,14 @@ export function exportReimbursementsToCsv(
     const total = Number(r.total_amount || 0)
       .toFixed(2)
       .replace('.', ',')
-    const status = r.status === 'paid' ? 'Pago' : 'Pendente'
+    const pago = Number(r.amount_paid || 0)
+      .toFixed(2)
+      .replace('.', ',')
+    const saldo = Math.max(0, Number(r.total_amount || 0) - Number(r.amount_paid || 0))
+      .toFixed(2)
+      .replace('.', ',')
+    const status =
+      r.status === 'paid' ? 'Pago' : r.status === 'partial' ? 'Pagamento Parcial' : 'Pendente'
 
     return [
       escapeCsvField(dataCriacao),
@@ -132,6 +141,8 @@ export function exportReimbursementsToCsv(
       escapeCsvField(abono),
       escapeCsvField(dissidio),
       escapeCsvField(total),
+      escapeCsvField(pago),
+      escapeCsvField(saldo),
       escapeCsvField(status),
     ].join(';')
   })

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-06T13:05:21.759Z",
+  "generatedAt": "2026-10-06T13:49:02.913Z",
   "collections": [
     {
       "name": "users",
@@ -207,7 +207,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["pending", "paid"]
+          "selectValues": ["pending", "partial", "paid"]
         },
         {
           "name": "created",
@@ -235,6 +235,12 @@
           "required": false,
           "system": false,
           "selectValues": ["mensal", "anual"]
+        },
+        {
+          "name": "amount_paid",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
