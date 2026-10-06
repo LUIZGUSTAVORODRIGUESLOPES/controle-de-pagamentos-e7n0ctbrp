@@ -36,7 +36,7 @@ import type {
   ReimbursementType,
   ReimbursementUpdateInput,
 } from '@/types/reimbursement'
-import type { UserRecord } from '@/types/pagamento'
+import type { UserRecord } from '@/types/reimbursement'
 
 interface EditReimbursementModalProps {
   record: ReimbursementRecord | null
@@ -59,6 +59,7 @@ export function EditReimbursementModal({
   const [referencePeriod, setReferencePeriod] = useState<string>('')
   const [referenceYear, setReferenceYear] = useState<string>('')
   const [baseSalaryInput, setBaseSalaryInput] = useState<string>('')
+  const [includesTerco, setIncludesTerco] = useState<boolean>(false)
   const [includesAbono, setIncludesAbono] = useState<boolean>(false)
   const [dissidioInput, setDissidioInput] = useState<string>('')
   const [totalAmountInput, setTotalAmountInput] = useState<string>('')
@@ -89,6 +90,7 @@ export function EditReimbursementModal({
             })
           : '',
       )
+      setIncludesTerco(Boolean(record.includes_terco))
       setIncludesAbono(Boolean(record.includes_abono))
       setDissidioInput(
         record.dissidio_amount !== undefined
@@ -155,6 +157,7 @@ export function EditReimbursementModal({
   const handleRecalculateAnnual = () => {
     const breakdown = calculateReimbursement({
       baseSalary: numericBaseSalary,
+      includesTerco,
       includesAbono,
       dissidioAmount: numericDissidio,
     })
@@ -206,6 +209,7 @@ export function EditReimbursementModal({
       reference_period: finalPeriod,
       reference_year: finalYear,
       base_salary: numericBaseSalary,
+      includes_terco: type === 'anual' ? includesTerco : false,
       includes_abono: type === 'anual' ? includesAbono : false,
       dissidio_amount: numericDissidio,
       total_amount: numericTotal,
@@ -398,35 +402,53 @@ export function EditReimbursementModal({
             </div>
           </div>
 
-          {/* Campo condicional: Inclui Abono (para anual) */}
+          {/* Campos condicionais: Terço e Abono (para anual) */}
           {type === 'anual' && (
-            <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 flex items-center justify-between">
-              <label
-                htmlFor="editIncludesAbono"
-                className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-slate-800"
-              >
-                <Checkbox
-                  id="editIncludesAbono"
-                  checked={includesAbono}
-                  onCheckedChange={(checked) => setIncludesAbono(Boolean(checked))}
-                  disabled={isSaving}
-                  className="data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
-                />
-                <span>Incluir Abono de Férias (10 dias = base_salary / 3)</span>
-              </label>
+            <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="space-y-2">
+                  <label
+                    htmlFor="editIncludesTerco"
+                    className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-slate-800"
+                  >
+                    <Checkbox
+                      id="editIncludesTerco"
+                      checked={includesTerco}
+                      onCheckedChange={(checked) => setIncludesTerco(Boolean(checked))}
+                      disabled={isSaving}
+                      className="data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                    />
+                    <span>Adicionar Terço Constitucional de Férias (+1/3)</span>
+                  </label>
 
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleRecalculateAnnual}
-                disabled={isSaving || numericBaseSalary <= 0}
-                className="h-7 text-xs text-emerald-700 border-emerald-200 hover:bg-emerald-50"
-                title="Recalcular o Valor Total pela fórmula oficial de Acerto Anual"
-              >
-                <Calculator className="w-3 h-3 mr-1" />
-                Recalcular Total
-              </Button>
+                  <label
+                    htmlFor="editIncludesAbono"
+                    className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-slate-800"
+                  >
+                    <Checkbox
+                      id="editIncludesAbono"
+                      checked={includesAbono}
+                      onCheckedChange={(checked) => setIncludesAbono(Boolean(checked))}
+                      disabled={isSaving}
+                      className="data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                    />
+                    <span>Adicionar Abono Pecuniário de Férias (+1/3)</span>
+                  </label>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRecalculateAnnual}
+                  disabled={isSaving || numericBaseSalary <= 0}
+                  className="h-7 text-xs text-emerald-700 border-emerald-200 hover:bg-emerald-50 self-start sm:self-center"
+                  title="Recalcular o Valor Total pela soma de Salário Base + Terço + Abono + Dissídio"
+                >
+                  <Calculator className="w-3 h-3 mr-1" />
+                  Recalcular Total
+                </Button>
+              </div>
             </div>
           )}
 

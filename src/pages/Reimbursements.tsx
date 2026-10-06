@@ -57,7 +57,7 @@ import {
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/hooks/use-toast'
 import type { ReimbursementRecord, ReimbursementUpdateInput } from '@/types/reimbursement'
-import type { UserRecord } from '@/types/pagamento'
+import type { UserRecord } from '@/types/reimbursement'
 import {
   ReimbursementFilterBar,
   type ReimbursementFiltersState,
@@ -87,8 +87,10 @@ export default function Reimbursements() {
 
   // Form states - Aba 2 (Acertos Anuais)
   const [selectedUserId, setSelectedUserId] = useState<string>('')
+  const [referencePeriodAnnual, setReferencePeriodAnnual] = useState<string>(brazilCurrent.period)
   const [referenceYear, setReferenceYear] = useState<string>(String(brazilCurrent.year))
   const [baseSalaryInput, setBaseSalaryInput] = useState<string>('15000,00')
+  const [includesTerco, setIncludesTerco] = useState<boolean>(true)
   const [includesAbono, setIncludesAbono] = useState<boolean>(false)
   const [dissidioInput, setDissidioInput] = useState<string>('0,00')
   const [isSubmittingAnnual, setIsSubmittingAnnual] = useState<boolean>(false)
@@ -316,17 +318,15 @@ export default function Reimbursements() {
   }, [dissidioInput])
 
   // Dynamic preview calculation for Aba 2 (Acertos Anuais)
-  // Rules:
-  // Fixo Anual: base_salary + (base_salary / 3)
-  // Abono (se marcado): soma mais (base_salary / 3)
-  // Total = Fixo Anual + Abono + dissidio_amount
+  // Rules: Salário Base + Terço Constitucional (+1/3) + Abono Pecuniário (+1/3) + Dissídio
   const annualBreakdown = useMemo(() => {
     return calculateReimbursement({
       baseSalary: numericBaseSalary,
+      includesTerco,
       includesAbono,
       dissidioAmount: numericDissidio,
     })
-  }, [numericBaseSalary, includesAbono, numericDissidio])
+  }, [numericBaseSalary, includesTerco, includesAbono, numericDissidio])
 
   // Summary statistics
   const stats = useMemo(() => {
@@ -590,25 +590,29 @@ export default function Reimbursements() {
 
     try {
       setIsSubmittingAnnual(true)
+      const periodVal = referencePeriodAnnual.trim() || `${yearNum}`
       await reimbursementsService.createAnnual({
         user: selectedUserId,
         reference_year: yearNum,
+        reference_period: periodVal,
         base_salary: numericBaseSalary,
+        includes_terco: includesTerco,
         includes_abono: includesAbono,
         dissidio_amount: numericDissidio,
       })
 
       toast({
-        title: 'Acerto anual gravado!',
-        description: `Acerto do ano ${yearNum} criado com status Pendente no valor de ${formatBRL(annualBreakdown.totalAmount)}.`,
+        title: 'Acerto gravado com sucesso!',
+        description: `Lançamento de ${formatBRL(annualBreakdown.totalAmount)} criado com status Pendente na competência ${periodVal}.`,
       })
 
       // Reset form
+      setIncludesTerco(true)
       setIncludesAbono(false)
       setDissidioInput('0,00')
       await fetchData()
-      // Go to Aba 3 or stay
-      setActiveTab('historico')
+      // Go to Aba 1 (mensais em aberto) where pending reimbursements live
+      setActiveTab('mensais')
     } catch (err: any) {
       console.error(err)
       setAnnualFormError(
@@ -1202,37 +1206,68 @@ export default function Reimbursements() {
                         </Select>
                       </div>
 
-                      {/* 2. Seleção do Ano */}
-                      <div className="space-y-1.5">
-                        <Label
-                          htmlFor="annualReferenceYear"
-                          className="text-xs font-semibold text-slate-700"
-                        >
-                          Ano de Referência <span className="text-red-500">*</span>
-                        </Label>
-                        <Input
-                          id="annualReferenceYear"
-                          type="number"
-                          min={2000}
-                          max={2100}
-                          value={referenceYear}
-                          onChange={(e) => setReferenceYear(e.target.value)}
-                          placeholder="2026"
-                          className="tabular-nums text-slate-800"
-                          required
-                          disabled={isSubmittingAnnual}
-                        />
-                        <p className="text-[11px] text-slate-400">Ex.: 2026 ou 2025</p>
+                      {/* 1. Mês/Ano de Referência e Ano */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label
+                            htmlFor="annualReferencePeriod"
+                            className="text-xs font-semibold text-slate-700 flex items-center justify-between"
+                          >
+                            <span>
+                              Mês/Ano de Referência <span className="text-red-500">*</span>
+                            </span>
+                          </Label>
+                          <Input
+                            id="annualReferencePeriod"
+                            type="text"
+                            value={referencePeriodAnnual}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setReferencePeriodAnnual(val)
+                              const parts = val.split('-')
+                              if (parts[0] && parts[0].length === 4) {
+                                setReferenceYear(parts[0])
+                              }
+                            }}
+                            placeholder="2026-10"
+                            className="tabular-nums text-slate-800 text-xs"
+                            required
+                            disabled={isSubmittingAnnual}
+                          />
+                          <p className="text-[10px] text-slate-400">Ex.: 2026-10</p>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label
+                            htmlFor="annualReferenceYear"
+                            className="text-xs font-semibold text-slate-700"
+                          >
+                            Ano de Referência <span className="text-red-500">*</span>
+                          </Label>
+                          <Input
+                            id="annualReferenceYear"
+                            type="number"
+                            min={2000}
+                            max={2100}
+                            value={referenceYear}
+                            onChange={(e) => setReferenceYear(e.target.value)}
+                            placeholder="2026"
+                            className="tabular-nums text-slate-800 text-xs"
+                            required
+                            disabled={isSubmittingAnnual}
+                          />
+                          <p className="text-[10px] text-slate-400">Ex.: 2026</p>
+                        </div>
                       </div>
 
-                      {/* 3. Salário Base */}
+                      {/* 2. Salário Base */}
                       <div className="space-y-1.5">
                         <Label
                           htmlFor="annualBaseSalary"
                           className="text-xs font-semibold text-slate-700 flex items-center justify-between"
                         >
                           <span>
-                            Salário Base (R$) <span className="text-red-500">*</span>
+                            Salário Base <span className="text-red-500">*</span>
                           </span>
                           <span className="text-[11px] text-slate-400 font-normal">
                             Ex.: 15.000,00
@@ -1255,7 +1290,31 @@ export default function Reimbursements() {
                         </div>
                       </div>
 
-                      {/* 4. Checkbox Incluir Abono de Férias (10 dias) */}
+                      {/* 3. Checkbox: Adicionar Terço Constitucional de Férias (+1/3) */}
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 hover:bg-slate-50 transition-colors">
+                        <label
+                          htmlFor="annualIncludesTerco"
+                          className="flex items-start gap-3 cursor-pointer select-none"
+                        >
+                          <Checkbox
+                            id="annualIncludesTerco"
+                            checked={includesTerco}
+                            onCheckedChange={(checked) => setIncludesTerco(Boolean(checked))}
+                            disabled={isSubmittingAnnual}
+                            className="mt-0.5 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                          />
+                          <div className="space-y-0.5">
+                            <span className="text-xs font-semibold text-slate-800 block">
+                              Adicionar Terço Constitucional de Férias (+1/3)
+                            </span>
+                            <p className="text-[11px] text-slate-500 leading-snug">
+                              Soma + base_salary/3 referente ao 1/3 constitucional.
+                            </p>
+                          </div>
+                        </label>
+                      </div>
+
+                      {/* 4. Checkbox: Adicionar Abono Pecuniário de Férias (+1/3) */}
                       <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 hover:bg-slate-50 transition-colors">
                         <label
                           htmlFor="annualIncludesAbono"
@@ -1270,24 +1329,25 @@ export default function Reimbursements() {
                           />
                           <div className="space-y-0.5">
                             <span className="text-xs font-semibold text-slate-800 block">
-                              Incluir Abono de Férias (10 dias)
+                              Adicionar Abono Pecuniário de Férias (+1/3)
                             </span>
                             <p className="text-[11px] text-slate-500 leading-snug">
-                              Adiciona + (base_salary / 3) correspondente à venda dos 10 dias de
-                              férias.
+                              Soma + base_salary/3 referente ao abono pecuniário (venda de 10 dias).
                             </p>
                           </div>
                         </label>
                       </div>
 
-                      {/* 5. Input Numérico Retroativo de Dissídio */}
+                      {/* 5. Input para Retroativo de Dissídio */}
                       <div className="space-y-1.5">
                         <Label
                           htmlFor="annualDissidio"
                           className="text-xs font-semibold text-slate-700 flex items-center justify-between"
                         >
-                          <span>Retroativo de Dissídio (R$)</span>
-                          <span className="text-[11px] text-slate-400 font-normal">Opcional</span>
+                          <span>Retroativo de Dissídio</span>
+                          <span className="text-[11px] text-slate-400 font-normal">
+                            Opcional (R$)
+                          </span>
                         </Label>
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium">
@@ -1353,10 +1413,10 @@ export default function Reimbursements() {
                     <div className="rounded-xl bg-white border border-emerald-200 p-4 flex items-center justify-between shadow-xs">
                       <div>
                         <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
-                          Total do Acerto Anual
+                          Total
                         </span>
                         <p className="text-[11px] text-slate-400 mt-0.5">
-                          Fixo Anual + Abono + Dissídio
+                          Salário Base + Terço de Férias + Abono Pecuniário + Dissídio
                         </p>
                       </div>
                       <span className="text-2xl sm:text-3xl font-extrabold text-emerald-700 tracking-tight tabular-nums">
@@ -1364,78 +1424,82 @@ export default function Reimbursements() {
                       </span>
                     </div>
 
-                    {/* Fórmulas detalhadas */}
+                    {/* Fórmulas detalhadas: preview dinâmico com componentes separados */}
                     <div className="rounded-xl bg-white border border-slate-200 p-4 space-y-3">
                       <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                        Memória de Cálculo
+                        Memória de Cálculo (Componentes Separados)
                       </h4>
 
                       <div className="space-y-2 text-xs text-slate-700">
-                        {/* 13º Salário */}
-                        <div className="flex items-center justify-between py-1 border-b border-slate-100">
+                        {/* 1. Salário Base */}
+                        <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
                           <div>
-                            <span className="font-semibold text-slate-800">
-                              13º Salário (Salário Base)
-                            </span>
-                            <p className="text-[10px] text-slate-400">Salário base integral</p>
+                            <span className="font-semibold text-slate-800">Salário Base</span>
+                            <p className="text-[10px] text-slate-400">Valor base integral</p>
                           </div>
-                          <span className="font-medium tabular-nums">
-                            {formatBRL(annualBreakdown.decimoTerceiro)}
+                          <span className="font-semibold tabular-nums text-slate-900">
+                            {formatBRL(annualBreakdown.baseSalary)}
                           </span>
                         </div>
 
-                        {/* 1/3 Férias */}
-                        <div className="flex items-center justify-between py-1 border-b border-slate-100">
+                        {/* 2. Terço de Férias */}
+                        <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
                           <div>
                             <span className="font-semibold text-slate-800">
-                              1/3 Constitucional de Férias
-                            </span>
-                            <p className="text-[10px] text-slate-400">base_salary / 3</p>
-                          </div>
-                          <span className="font-medium tabular-nums">
-                            {formatBRL(annualBreakdown.tercoFerias)}
-                          </span>
-                        </div>
-
-                        {/* Fixo Anual */}
-                        <div className="flex items-center justify-between py-1 bg-emerald-50/70 px-2 rounded-lg font-bold text-emerald-900 border border-emerald-200/60">
-                          <span>Fixo Anual (base_salary + base_salary / 3)</span>
-                          <span className="tabular-nums">
-                            {formatBRL(annualBreakdown.fixoAnual)}
-                          </span>
-                        </div>
-
-                        {/* Abono de Férias */}
-                        <div className="flex items-center justify-between py-1 border-b border-slate-100">
-                          <div>
-                            <span className="font-semibold text-slate-800">
-                              Abono de Férias (10 dias)
+                              Terço de Férias (+1/3)
                             </span>
                             <p className="text-[10px] text-slate-400">
-                              {includesAbono
-                                ? '+ base_salary / 3 (incluso)'
+                              {includesTerco
+                                ? '+ base_salary / 3 (selecionado)'
                                 : 'Não selecionado (R$ 0,00)'}
                             </p>
                           </div>
                           <span
-                            className={`font-medium tabular-nums ${includesAbono ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}
+                            className={`font-semibold tabular-nums ${includesTerco ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}
+                          >
+                            {formatBRL(annualBreakdown.tercoFerias)}
+                          </span>
+                        </div>
+
+                        {/* 3. Abono Pecuniário */}
+                        <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
+                          <div>
+                            <span className="font-semibold text-slate-800">
+                              Abono Pecuniário (+1/3)
+                            </span>
+                            <p className="text-[10px] text-slate-400">
+                              {includesAbono
+                                ? '+ base_salary / 3 (selecionado)'
+                                : 'Não selecionado (R$ 0,00)'}
+                            </p>
+                          </div>
+                          <span
+                            className={`font-semibold tabular-nums ${includesAbono ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}
                           >
                             {formatBRL(annualBreakdown.abonoAmount)}
                           </span>
                         </div>
 
-                        {/* Dissídio */}
-                        <div className="flex items-center justify-between py-1 border-b border-slate-100">
+                        {/* 4. Dissídio */}
+                        <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
                           <div>
-                            <span className="font-semibold text-slate-800">
-                              Retroativo de Dissídio
-                            </span>
-                            <p className="text-[10px] text-slate-400">Valor informado</p>
+                            <span className="font-semibold text-slate-800">Dissídio</span>
+                            <p className="text-[10px] text-slate-400">
+                              Retroativo de dissídio coletivo
+                            </p>
                           </div>
                           <span
-                            className={`font-medium tabular-nums ${numericDissidio > 0 ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}
+                            className={`font-semibold tabular-nums ${numericDissidio > 0 ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}
                           >
                             {formatBRL(annualBreakdown.dissidioAmount)}
+                          </span>
+                        </div>
+
+                        {/* 5. Total */}
+                        <div className="flex items-center justify-between py-2 bg-emerald-50/80 px-2.5 rounded-lg font-bold text-emerald-900 border border-emerald-200">
+                          <span>Total</span>
+                          <span className="tabular-nums text-sm">
+                            {formatBRL(annualBreakdown.totalAmount)}
                           </span>
                         </div>
                       </div>
@@ -1610,6 +1674,11 @@ export default function Reimbursements() {
                               </td>
 
                               <td className="p-3 text-right tabular-nums text-slate-600 whitespace-nowrap">
+                                {item.includes_terco && (
+                                  <span className="inline-block px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] mr-1">
+                                    +1/3 Férias
+                                  </span>
+                                )}
                                 {item.includes_abono && (
                                   <span className="inline-block px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 text-[10px] mr-1">
                                     +Abono 10d
@@ -1619,7 +1688,7 @@ export default function Reimbursements() {
                                   <span className="inline-block px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[10px]">
                                     +{formatBRL(item.dissidio_amount)}
                                   </span>
-                                ) : !item.includes_abono ? (
+                                ) : !item.includes_abono && !item.includes_terco ? (
                                   '-'
                                 ) : null}
                               </td>
@@ -2073,28 +2142,20 @@ export default function Reimbursements() {
                       </td>
                     </tr>
                   )}
-                  {receiptRecord.type === 'anual' && (
-                    <>
-                      <tr>
-                        <td className="p-2.5 font-medium text-slate-900">13º Salário (Integral)</td>
-                        <td className="p-2.5 text-right font-medium">
-                          {formatBRL(receiptRecord.base_salary || 0)}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td className="p-2.5 font-medium text-slate-900">
-                          1/3 Constitucional de Férias
-                        </td>
-                        <td className="p-2.5 text-right font-medium">
-                          {formatBRL((receiptRecord.base_salary || 0) / 3)}
-                        </td>
-                      </tr>
-                    </>
+                  {receiptRecord.includes_terco && (
+                    <tr>
+                      <td className="p-2.5 font-medium text-slate-900">
+                        Terço Constitucional de Férias (+1/3)
+                      </td>
+                      <td className="p-2.5 text-right font-medium text-emerald-800">
+                        {formatBRL((receiptRecord.base_salary || 0) / 3)}
+                      </td>
+                    </tr>
                   )}
                   {receiptRecord.includes_abono && (
                     <tr>
                       <td className="p-2.5 font-medium text-slate-900">
-                        Abono Pecuniário (10 dias)
+                        Abono Pecuniário de Férias (+1/3)
                       </td>
                       <td className="p-2.5 text-right font-medium text-emerald-800">
                         {formatBRL((receiptRecord.base_salary || 0) / 3)}

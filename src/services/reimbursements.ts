@@ -6,7 +6,7 @@ import type {
   ReimbursementUpdateInput,
   ReimbursementStatus,
 } from '@/types/reimbursement'
-import type { UserRecord } from '@/types/pagamento'
+import type { UserRecord } from '@/types/reimbursement'
 import { calculateReimbursement } from '@/lib/reimbursement'
 
 export const reimbursementsService = {
@@ -108,11 +108,13 @@ export const reimbursementsService = {
   async createAnnual(input: ReimbursementAnnualInput): Promise<ReimbursementRecord> {
     const breakdown = calculateReimbursement({
       baseSalary: Number(input.base_salary) || 0,
+      includesTerco: Boolean(input.includes_terco),
       includesAbono: Boolean(input.includes_abono),
       dissidioAmount: Number(input.dissidio_amount) || 0,
     })
 
     const year = Number(input.reference_year)
+    const period = input.reference_period?.trim() || String(year)
     const amountPaid = Math.round((Number(input.amount_paid || 0) + Number.EPSILON) * 100) / 100
 
     let status: ReimbursementStatus = 'pending'
@@ -126,9 +128,10 @@ export const reimbursementsService = {
       {
         user: input.user,
         reference_year: year,
-        reference_period: String(year),
+        reference_period: period,
         type: 'anual',
         base_salary: Number(input.base_salary),
+        includes_terco: Boolean(input.includes_terco),
         includes_abono: Boolean(input.includes_abono),
         dissidio_amount: Math.abs(Number(input.dissidio_amount) || 0),
         total_amount: breakdown.totalAmount,
@@ -228,6 +231,7 @@ export const reimbursementsService = {
     if (input.base_salary !== undefined) {
       payload.base_salary = Math.round((Number(input.base_salary) + Number.EPSILON) * 100) / 100
     }
+    if (input.includes_terco !== undefined) payload.includes_terco = Boolean(input.includes_terco)
     if (input.includes_abono !== undefined) payload.includes_abono = Boolean(input.includes_abono)
     if (input.dissidio_amount !== undefined) {
       payload.dissidio_amount =

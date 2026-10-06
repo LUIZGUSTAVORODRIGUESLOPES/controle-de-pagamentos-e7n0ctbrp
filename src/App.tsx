@@ -8,7 +8,6 @@ import { AdminRoute } from '@/components/AdminRoute'
 import Layout from '@/components/Layout'
 
 // Pages
-import Index from './pages/Index'
 import Reimbursements from './pages/Reimbursements'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
@@ -41,7 +40,15 @@ const App = () => (
               </ProtectedRoute>
             }
           >
-            <Route path="/" element={<Index />} />
+            <Route
+              path="/"
+              element={
+                <AdminRoute>
+                  <Reimbursements />
+                </AdminRoute>
+              }
+            />
+            {/* Redirecionamento/rota de compatibilidade */}
             <Route
               path="/reimbursements"
               element={

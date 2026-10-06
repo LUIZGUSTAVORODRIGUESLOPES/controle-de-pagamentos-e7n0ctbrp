@@ -1,5 +1,14 @@
 import type { RecordModel } from 'pocketbase'
-import type { UserRecord } from './pagamento'
+export interface UserRecord {
+  id: string
+  email: string
+  name: string
+  role?: 'admin' | 'user' | string
+  avatar?: string
+  monthly_salary?: number
+  created: string
+  updated: string
+}
 
 export type ReimbursementStatus = 'pending' | 'partial' | 'paid'
 export type ReimbursementType = 'mensal' | 'anual'
@@ -10,6 +19,7 @@ export interface ReimbursementRecord extends RecordModel {
   reference_year?: number
   type?: ReimbursementType
   base_salary?: number
+  includes_terco?: boolean
   includes_abono?: boolean
   dissidio_amount?: number
   total_amount: number
@@ -25,8 +35,10 @@ export interface ReimbursementRecord extends RecordModel {
 export interface ReimbursementAnnualInput {
   user: string
   reference_year: number
+  reference_period?: string
   base_salary: number
-  includes_abono: boolean
+  includes_terco?: boolean
+  includes_abono?: boolean
   dissidio_amount: number
   amount_paid?: number
 }
@@ -45,6 +57,7 @@ export interface ReimbursementUpdateInput {
   reference_year?: number
   type?: ReimbursementType
   base_salary?: number
+  includes_terco?: boolean
   includes_abono?: boolean
   dissidio_amount?: number
   total_amount?: number

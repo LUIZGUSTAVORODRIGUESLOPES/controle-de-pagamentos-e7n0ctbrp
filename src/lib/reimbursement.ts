@@ -1,26 +1,28 @@
 export interface ReimbursementCalculationInputs {
   baseSalary: number
-  includesAbono: boolean
+  includesTerco?: boolean
+  includesAbono?: boolean
   dissidioAmount: number
 }
 
 export interface ReimbursementBreakdown {
-  decimoTerceiro: number
+  baseSalary: number
   tercoFerias: number
-  fixoAnual: number
   abonoAmount: number
   dissidioAmount: number
   totalAmount: number
 }
 
 /**
- * Executive Annual Reimbursement calculation:
- * - Fixo Anual: base_salary (referente ao 13º) + (base_salary / 3) (referente ao 1/3 de férias).
- * - Abono (se includes_abono = true): soma mais (base_salary / 3).
- * - Dissídio: soma o valor absoluto de dissidio_amount.
- * - Total = Fixo Anual + Abono (se houver) + Dissídio.
+ * Executive Annual / Vacation calculation:
+ * Soma:
+ * - Salário Base
+ * - Terço Constitucional de Férias: se includesTerco = true (+ base_salary / 3), senão 0
+ * - Abono Pecuniário de Férias: se includesAbono = true (+ base_salary / 3), senão 0
+ * - Retroativo de Dissídio: valor absoluto de dissidioAmount
+ * Total = Salário Base + Terço de Férias + Abono Pecuniário + Dissídio
  *
- * Uses exact fractions without intermediate rounding; rounded to 2 decimal places only at the end.
+ * Uses exact fractions without intermediate rounding; rounded to 2 decimal places at the end.
  */
 export function calculateReimbursement(
   inputs: ReimbursementCalculationInputs,
@@ -30,19 +32,15 @@ export function calculateReimbursement(
   const dissidioRaw = Number.isFinite(inputs.dissidioAmount) ? inputs.dissidioAmount : 0
   const dissidioAmount = Math.abs(dissidioRaw)
 
-  const decimoTerceiro = baseSalary
-  const tercoFerias = baseSalary / 3
-  const fixoAnual = decimoTerceiro + tercoFerias
-
+  const tercoFerias = inputs.includesTerco ? baseSalary / 3 : 0
   const abonoAmount = inputs.includesAbono ? baseSalary / 3 : 0
 
-  const rawTotal = fixoAnual + abonoAmount + dissidioAmount
+  const rawTotal = baseSalary + tercoFerias + abonoAmount + dissidioAmount
   const totalAmount = Math.round((rawTotal + Number.EPSILON) * 100) / 100
 
   return {
-    decimoTerceiro,
+    baseSalary,
     tercoFerias,
-    fixoAnual,
     abonoAmount,
     dissidioAmount,
     totalAmount,

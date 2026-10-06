@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Wallet, LogOut, User, Receipt, LayoutDashboard, ShieldCheck } from 'lucide-react'
+import { Wallet, LogOut, User, Receipt, ShieldCheck } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 
@@ -78,34 +78,22 @@ export default function Layout() {
                 <Link
                   to="/"
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                    location.pathname === '/'
+                    location.pathname === '/' || location.pathname.startsWith('/reimbursements')
                       ? 'bg-emerald-50 text-emerald-800'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  <LayoutDashboard className="w-3.5 h-3.5" />
-                  <span>Painel</span>
-                </Link>
-
-                {isAdmin && (
-                  <Link
-                    to="/reimbursements"
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                      location.pathname.startsWith('/reimbursements')
-                        ? 'bg-emerald-50 text-emerald-800'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Receipt className="w-3.5 h-3.5" />
-                    <span>Reembolsos</span>
+                  <Receipt className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Reembolsos & Lançamentos</span>
+                  {isAdmin && (
                     <Badge
                       variant="secondary"
                       className="text-[9px] px-1.5 py-0 h-4 bg-emerald-100 text-emerald-700 font-bold border-0"
                     >
                       Admin
                     </Badge>
-                  </Link>
-                )}
+                  )}
+                </Link>
               </nav>
             )}
           </div>
@@ -149,25 +137,14 @@ export default function Layout() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {isAdmin && (
-                  <DropdownMenuItem
-                    onClick={() => navigate('/reimbursements')}
-                    className="md:hidden cursor-pointer text-xs font-medium text-slate-700"
-                  >
-                    <Receipt className="w-3.5 h-3.5 mr-2 text-emerald-600" />
-                    <span>Reembolso Anual Executivo</span>
-                  </DropdownMenuItem>
-                )}
-                {location.pathname !== '/' && (
-                  <DropdownMenuItem
-                    onClick={() => navigate('/')}
-                    className="md:hidden cursor-pointer text-xs font-medium text-slate-700"
-                  >
-                    <LayoutDashboard className="w-3.5 h-3.5 mr-2 text-slate-600" />
-                    <span>Painel Financeiro</span>
-                  </DropdownMenuItem>
-                )}
-                {isAdmin && <DropdownMenuSeparator className="md:hidden" />}
+                <DropdownMenuItem
+                  onClick={() => navigate('/')}
+                  className="md:hidden cursor-pointer text-xs font-medium text-slate-700"
+                >
+                  <Receipt className="w-3.5 h-3.5 mr-2 text-emerald-600" />
+                  <span>Reembolsos & Lançamentos</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="md:hidden" />
                 <DropdownMenuItem
                   onClick={handleLogout}
                   className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer text-xs"
