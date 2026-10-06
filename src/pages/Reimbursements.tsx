@@ -56,8 +56,13 @@ import {
 } from '@/lib/reimbursementExport'
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/hooks/use-toast'
-import type { ReimbursementRecord } from '@/types/reimbursement'
+import type { ReimbursementRecord, ReimbursementUpdateInput } from '@/types/reimbursement'
 import type { UserRecord } from '@/types/pagamento'
+import {
+  ReimbursementFilterBar,
+  type ReimbursementFiltersState,
+} from '@/components/ReimbursementFilterBar'
+import { EditReimbursementModal } from '@/components/EditReimbursementModal'
 
 export default function Reimbursements() {
   const { user: authUser } = useAuth()
@@ -70,16 +75,10 @@ export default function Reimbursements() {
   const [reimbursements, setReimbursements] = useState<ReimbursementRecord[]>([])
   const [users, setUsers] = useState<UserRecord[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(true)
-  const [searchFilter, setSearchFilter] = useState<string>('')
 
   // Quick Action: Gerar Lançamento do Mês
   const brazilCurrent = useMemo(() => getCurrentBrazilPeriod(), [])
   const [isGeneratingMonth, setIsGeneratingMonth] = useState<boolean>(false)
-
-  // Edit Modal State (Aba 1)
-  const [editingRecord, setEditingRecord] = useState<ReimbursementRecord | null>(null)
-  const [editTotalInput, setEditTotalInput] = useState<string>('')
-  const [isSavingEdit, setIsSavingEdit] = useState<boolean>(false)
 
   // Salary Edit Modal (allows admin to adjust user's base monthly salary)
   const [editingSalaryUser, setEditingSalaryUser] = useState<UserRecord | null>(null)
@@ -197,14 +196,109 @@ export default function Reimbursements() {
     )
   }, [reimbursements, authUser?.id, brazilCurrent.period])
 
-  // Filter lists by status and type
-  const pendingMonthlyList = useMemo(() => {
-    return reimbursements.filter((r) => r.type === 'mensal' && r.status !== 'paid')
+  // Unified Edit Modal State (abre para qualquer lançamento)
+  const [editingRecord, setEditingRecord] = useState<ReimbursementRecord | null>(null)
+  const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false)
+
+  // Filtros da Aba 1 (Mensais em Aberto)
+  const [mensalFilters, setMensalFilters] = useState<ReimbursementFiltersState>({
+    search: '',
+    sortField: 'competence',
+    sortOrder: 'desc',
+    type: 'all',
+    status: 'all',
+  })
+
+  // Filtros da Aba 3 (Histórico e Quitações)
+  const [historicoFilters, setHistoricoFilters] = useState<ReimbursementFiltersState>({
+    search: '',
+    sortField: 'competence',
+    sortOrder: 'desc',
+    type: 'all',
+    status: 'all',
+  })
+
+  // Listas base
+  const rawPendingMonthlyList = useMemo(() => {
+    // Permite que qualquer lançamento não-pago apareça na lista de pendências
+    return reimbursements.filter((r) => r.status !== 'paid')
   }, [reimbursements])
 
-  const paidHistoryList = useMemo(() => {
+  const rawPaidHistoryList = useMemo(() => {
     return reimbursements.filter((r) => r.status === 'paid')
   }, [reimbursements])
+
+  // Função auxiliar de ordenação e filtro
+  const applyFiltersAndSort = useCallback(
+    (records: ReimbursementRecord[], filters: ReimbursementFiltersState) => {
+      let result = records
+
+      // 1. Filtro de Busca
+      if (filters.search.trim()) {
+        const term = filters.search.trim().toLowerCase()
+        result = result.filter((r) => {
+          const userName = r.expand?.user?.name?.toLowerCase() || ''
+          const userEmail = r.expand?.user?.email?.toLowerCase() || ''
+          const periodStr = (r.reference_period || String(r.reference_year || '')).toLowerCase()
+          const typeStr = (r.type || 'anual').toLowerCase()
+          return (
+            userName.includes(term) ||
+            userEmail.includes(term) ||
+            periodStr.includes(term) ||
+            typeStr.includes(term)
+          )
+        })
+      }
+
+      // 2. Filtro de Tipo (mensal, anual)
+      if (filters.type !== 'all') {
+        result = result.filter((r) => r.type === filters.type)
+      }
+
+      // 3. Filtro de Status (pending, partial, paid)
+      if (filters.status !== 'all') {
+        result = result.filter((r) => r.status === filters.status)
+      }
+
+      // 4. Ordenação
+      return [...result].sort((a, b) => {
+        let diff = 0
+        if (filters.sortField === 'competence') {
+          // reference_period ou reference_year
+          const keyA = (
+            a.reference_period ||
+            (a.reference_year ? String(a.reference_year) : '') ||
+            ''
+          ).toLowerCase()
+          const keyB = (
+            b.reference_period ||
+            (b.reference_year ? String(b.reference_year) : '') ||
+            ''
+          ).toLowerCase()
+          diff = keyA.localeCompare(keyB)
+        } else if (filters.sortField === 'payment_date') {
+          // updated ou created
+          const dateA = new Date(a.updated || a.created || 0).getTime()
+          const dateB = new Date(b.updated || b.created || 0).getTime()
+          diff = dateA - dateB
+        } else if (filters.sortField === 'total_amount') {
+          diff = (a.total_amount || 0) - (b.total_amount || 0)
+        }
+
+        return filters.sortOrder === 'asc' ? diff : -diff
+      })
+    },
+    [],
+  )
+
+  // Listas filtradas e ordenadas
+  const pendingMonthlyList = useMemo(() => {
+    return applyFiltersAndSort(rawPendingMonthlyList, mensalFilters)
+  }, [rawPendingMonthlyList, mensalFilters, applyFiltersAndSort])
+
+  const paidHistoryList = useMemo(() => {
+    return applyFiltersAndSort(rawPaidHistoryList, historicoFilters)
+  }, [rawPaidHistoryList, historicoFilters, applyFiltersAndSort])
 
   // Parse numeric values for Annual Calculator
   const numericBaseSalary = useMemo(() => {
@@ -410,49 +504,31 @@ export default function Reimbursements() {
     }
   }
 
-  // Open Edit Modal for Monthly
+  // Open Edit Modal (suporta qualquer tipo de lançamento em qualquer aba)
   const handleOpenEdit = (item: ReimbursementRecord) => {
     setEditingRecord(item)
-    setEditTotalInput(
-      item.total_amount.toLocaleString('pt-BR', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }),
-    )
+    setIsEditModalOpen(true)
   }
 
-  // Save Edit Total Amount
-  const handleSaveEdit = async () => {
-    if (!editingRecord) return
-    const normalized = editTotalInput.replace(/\./g, '').replace(',', '.')
-    const parsed = parseFloat(normalized)
-    if (isNaN(parsed) || parsed < 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Valor inválido',
-        description: 'Informe um valor numérico válido.',
-      })
-      return
-    }
-
+  // Save Edit Record completo
+  const handleSaveEditRecord = async (id: string, updated: ReimbursementUpdateInput) => {
     try {
-      setIsSavingEdit(true)
-      await reimbursementsService.updateTotalAmount(editingRecord.id, parsed)
+      await reimbursementsService.update(id, updated)
       toast({
-        title: 'Valor atualizado!',
-        description: `O valor do lançamento foi alterado para ${formatBRL(parsed)}.`,
+        title: 'Lançamento atualizado com sucesso!',
+        description: `As alterações no lançamento foram gravadas.`,
       })
+      setIsEditModalOpen(false)
       setEditingRecord(null)
       await fetchData()
     } catch (err: any) {
-      console.error(err)
+      console.error('Erro ao atualizar lançamento:', err)
       toast({
         variant: 'destructive',
-        title: 'Erro ao atualizar valor',
-        description: err?.message || 'Não foi possível salvar o novo valor.',
+        title: 'Erro ao atualizar lançamento',
+        description: err?.message || 'Não foi possível salvar as alterações.',
       })
-    } finally {
-      setIsSavingEdit(false)
+      throw err
     }
   }
 
@@ -592,23 +668,8 @@ export default function Reimbursements() {
     }, 250)
   }
 
-  // Filtered History list by search term
-  const filteredPaidHistory = useMemo(() => {
-    if (!searchFilter.trim()) return paidHistoryList
-    const term = searchFilter.trim().toLowerCase()
-    return paidHistoryList.filter((r) => {
-      const userName = r.expand?.user?.name?.toLowerCase() || ''
-      const userEmail = r.expand?.user?.email?.toLowerCase() || ''
-      const periodStr = (r.reference_period || String(r.reference_year || '')).toLowerCase()
-      const typeStr = (r.type || 'anual').toLowerCase()
-      return (
-        userName.includes(term) ||
-        userEmail.includes(term) ||
-        periodStr.includes(term) ||
-        typeStr.includes(term)
-      )
-    })
-  }, [paidHistoryList, searchFilter])
+  // Backward compatibility: filteredPaidHistory aponta para paidHistoryList (já filtrada e ordenada)
+  const filteredPaidHistory = paidHistoryList
 
   return (
     <>
@@ -790,9 +851,9 @@ export default function Reimbursements() {
               value="mensais"
               className="text-xs sm:text-sm font-semibold rounded-lg data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs"
             >
-              <Clock className="w-4 h-4 mr-1.5 text-amber-600" />
-              Lançamentos Mensais ({pendingMonthlyList.length})
-            </TabsTrigger>
+              <Calendar className="w-4 h-4 mr-1.5 text-slate-600" />
+              Lançamentos em Aberto ({rawPendingMonthlyList.length})
+            </TabsTrigger>{' '}
             <TabsTrigger
               value="anual"
               className="text-xs sm:text-sm font-semibold rounded-lg data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs"
@@ -818,9 +879,9 @@ export default function Reimbursements() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                      <span>Lançamentos Mensais em Aberto</span>
+                      <span>Lançamentos em Aberto (Pendentes e Parciais)</span>
                       <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200 text-xs px-2 py-0.5">
-                        {pendingMonthlyList.length} lançamento(s)
+                        {pendingMonthlyList.length} de {rawPendingMonthlyList.length} lançamento(s)
                       </Badge>
                       {stats.countParciais > 0 && (
                         <Badge className="bg-red-100 text-red-800 hover:bg-red-100 border-red-200 text-xs px-2 py-0.5">
@@ -846,7 +907,27 @@ export default function Reimbursements() {
                 </div>
               </CardHeader>
 
-              <CardContent className="pt-4 p-4 sm:p-6">
+              <CardContent className="pt-4 p-4 sm:p-6 space-y-4">
+                {/* Barra de Filtros e Ordenação da Aba Mensais */}
+                <ReimbursementFilterBar
+                  filters={mensalFilters}
+                  onChange={setMensalFilters}
+                  onReset={() =>
+                    setMensalFilters({
+                      search: '',
+                      sortField: 'competence',
+                      sortOrder: 'desc',
+                      type: 'all',
+                      status: 'all',
+                    })
+                  }
+                  totalCount={rawPendingMonthlyList.length}
+                  filteredCount={pendingMonthlyList.length}
+                  showTypeFilter={true}
+                  showStatusFilter={true}
+                  showSortPaymentDate={false}
+                />
+
                 {isLoading ? (
                   <div className="py-12 flex flex-col items-center justify-center text-slate-400 gap-3">
                     <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
@@ -858,20 +939,41 @@ export default function Reimbursements() {
                       <CheckCircle2 className="w-7 h-7" />
                     </div>
                     <h4 className="text-base font-semibold text-slate-800">
-                      Nenhum lançamento mensal pendente
+                      {rawPendingMonthlyList.length === 0
+                        ? 'Nenhum lançamento mensal pendente'
+                        : 'Nenhum lançamento encontrado com os filtros selecionados'}
                     </h4>
                     <p className="text-xs text-slate-500 max-w-md mt-1">
-                      Todos os pagamentos mensais foram confirmados integralmente ou ainda não foram
-                      gerados.
+                      {rawPendingMonthlyList.length === 0
+                        ? 'Todos os pagamentos mensais foram confirmados integralmente ou ainda não foram gerados.'
+                        : 'Tente ajustar os critérios de busca ou redefinir os filtros acima.'}
                     </p>
-                    <Button
-                      onClick={handleGenerateMonthly}
-                      disabled={hasPendingMonthlyForCurrentMonth || isGeneratingMonth}
-                      className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
-                    >
-                      <PlusCircle className="w-4 h-4 mr-1.5" />
-                      Gerar Lançamento do Mês ({brazilCurrent.monthLabel})
-                    </Button>
+                    {rawPendingMonthlyList.length === 0 ? (
+                      <Button
+                        onClick={handleGenerateMonthly}
+                        disabled={hasPendingMonthlyForCurrentMonth || isGeneratingMonth}
+                        className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+                      >
+                        <PlusCircle className="w-4 h-4 mr-1.5" />
+                        Gerar Lançamento do Mês ({brazilCurrent.monthLabel})
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          setMensalFilters({
+                            search: '',
+                            sortField: 'competence',
+                            sortOrder: 'desc',
+                            type: 'all',
+                            status: 'all',
+                          })
+                        }
+                        className="mt-4 text-xs"
+                      >
+                        Limpar filtros
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -879,11 +981,12 @@ export default function Reimbursements() {
                       <thead className="bg-slate-50 text-slate-700 font-semibold uppercase tracking-wider text-[11px] border-b border-slate-200">
                         <tr>
                           <th className="p-3">Período</th>
+                          <th className="p-3">Tipo</th>
                           <th className="p-3">Executivo / Usuário</th>
                           <th className="p-3 text-right">Salário Base</th>
                           <th className="p-3 text-right">Valor Total</th>
                           <th className="p-3 text-right">Valor Pago</th>
-                          <th className="p-3 text-right">Saldo a Receber</th>
+                          <th className="p-3 text-right">Saldo Devedor</th>
                           <th className="p-3">Status</th>
                           <th className="p-3 text-right">Ações</th>
                         </tr>
@@ -913,15 +1016,28 @@ export default function Reimbursements() {
                                     {formatPeriodDisplay(
                                       item.reference_period,
                                       item.reference_year,
-                                      'mensal',
+                                      item.type,
                                     )}
                                   </span>
                                   {isPartial && (
                                     <span className="text-[10px] font-semibold text-red-700 bg-red-100 border border-red-200 px-1.5 py-0.2 rounded">
-                                      Déficit dissídio
+                                      Déficit
                                     </span>
                                   )}
                                 </div>
+                              </td>
+
+                              <td className="p-3 whitespace-nowrap">
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[10px] font-semibold uppercase ${
+                                    item.type === 'mensal'
+                                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  }`}
+                                >
+                                  {item.type === 'mensal' ? 'Mensal' : 'Anual'}
+                                </Badge>
                               </td>
 
                               <td className="p-3">
@@ -975,15 +1091,15 @@ export default function Reimbursements() {
 
                               <td className="p-3 text-right whitespace-nowrap">
                                 <div className="flex items-center justify-end gap-1.5">
-                                  {/* Botão Editar (abre modal para alterar total_amount) */}
+                                  {/* Botão Editar Completo */}
                                   <Button
                                     size="sm"
                                     variant="outline"
                                     onClick={() => handleOpenEdit(item)}
-                                    title="Editar valor total (acréscimo/desconto)"
-                                    className="h-7 text-xs font-medium border-slate-300 text-slate-700 hover:bg-slate-100"
+                                    title="Editar lançamento completo (valores, competência, status)"
+                                    className="h-7 text-xs font-semibold border-slate-300 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300"
                                   >
-                                    <Pencil className="w-3 h-3 mr-1 text-slate-500" />
+                                    <Pencil className="w-3 h-3 mr-1 text-emerald-600" />
                                     Editar
                                   </Button>
 
@@ -1359,7 +1475,7 @@ export default function Reimbursements() {
                   {/* Botão de Exportação CSV */}
                   <Button
                     onClick={handleExportCsv}
-                    disabled={paidHistoryList.length === 0}
+                    disabled={rawPaidHistoryList.length === 0}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-9 px-3.5 shadow-sm self-start sm:self-auto"
                   >
                     <Download className="w-3.5 h-3.5 mr-1.5" />
@@ -1367,18 +1483,26 @@ export default function Reimbursements() {
                   </Button>
                 </div>
 
-                {/* Filtro / Pesquisa */}
+                {/* Barra Completa de Filtros e Ordenação da Aba Histórico */}
                 <div className="pt-3">
-                  <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <Input
-                      type="text"
-                      placeholder="Filtrar por executivo, tipo (mensal/anual) ou período..."
-                      value={searchFilter}
-                      onChange={(e) => setSearchFilter(e.target.value)}
-                      className="pl-9 h-9 text-xs sm:text-sm bg-white"
-                    />
-                  </div>
+                  <ReimbursementFilterBar
+                    filters={historicoFilters}
+                    onChange={setHistoricoFilters}
+                    onReset={() =>
+                      setHistoricoFilters({
+                        search: '',
+                        sortField: 'competence',
+                        sortOrder: 'desc',
+                        type: 'all',
+                        status: 'all',
+                      })
+                    }
+                    totalCount={rawPaidHistoryList.length}
+                    filteredCount={paidHistoryList.length}
+                    showTypeFilter={true}
+                    showStatusFilter={false}
+                    showSortPaymentDate={true}
+                  />
                 </div>
               </CardHeader>
 
@@ -1394,15 +1518,32 @@ export default function Reimbursements() {
                       <Receipt className="w-7 h-7" />
                     </div>
                     <h4 className="text-base font-semibold text-slate-800">
-                      {searchFilter
-                        ? 'Nenhum pagamento encontrado com esse filtro'
-                        : 'Nenhum pagamento registrado como Pago ainda'}
+                      {rawPaidHistoryList.length === 0
+                        ? 'Nenhum pagamento registrado como Pago ainda'
+                        : 'Nenhum pagamento encontrado com os filtros selecionados'}
                     </h4>
                     <p className="text-xs text-slate-500 max-w-sm mt-1">
-                      {searchFilter
-                        ? 'Verifique os termos pesquisados.'
-                        : 'Quando um lançamento mensal ou acerto anual for pago, ele aparecerá aqui.'}
+                      {rawPaidHistoryList.length === 0
+                        ? 'Quando um lançamento mensal ou acerto anual for pago, ele aparecerá aqui.'
+                        : 'Verifique os termos de busca ou redefina os filtros acima.'}
                     </p>
+                    {rawPaidHistoryList.length > 0 && (
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          setHistoricoFilters({
+                            search: '',
+                            sortField: 'competence',
+                            sortOrder: 'desc',
+                            type: 'all',
+                            status: 'all',
+                          })
+                        }
+                        className="mt-4 text-xs"
+                      >
+                        Limpar filtros
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -1504,6 +1645,18 @@ export default function Reimbursements() {
 
                               <td className="p-3 text-right whitespace-nowrap">
                                 <div className="flex items-center justify-end gap-1.5">
+                                  {/* Botão Editar Completo */}
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleOpenEdit(item)}
+                                    title="Editar lançamento (valores, datas, competência, status)"
+                                    className="h-7 text-xs font-semibold border-slate-300 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300"
+                                  >
+                                    <Pencil className="w-3 h-3 mr-1 text-emerald-600" />
+                                    Editar
+                                  </Button>
+
                                   {/* Recibo formal / Impressão */}
                                   <Button
                                     size="sm"
@@ -1542,85 +1695,18 @@ export default function Reimbursements() {
       </div>
 
       {/* ======================================================== */}
-      {/* MODAL 1: Editar Valor do Lançamento Mensal (Aba 1) */}
+      {/* MODAL UNIFICADO: Editar Lançamento Completo */}
       {/* ======================================================== */}
-      <Dialog
-        open={!!editingRecord}
+      <EditReimbursementModal
+        record={editingRecord}
+        users={users}
+        open={isEditModalOpen}
         onOpenChange={(open) => {
+          setIsEditModalOpen(open)
           if (!open) setEditingRecord(null)
         }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-2">
-              <Pencil className="w-5 h-5" />
-            </div>
-            <DialogTitle>Editar Lançamento Mensal</DialogTitle>
-            <DialogDescription className="text-xs text-slate-500 pt-1">
-              Altere o valor total do lançamento referente a{' '}
-              <strong>
-                {editingRecord
-                  ? formatPeriodDisplay(
-                      editingRecord.reference_period,
-                      editingRecord.reference_year,
-                      editingRecord.type,
-                    )
-                  : ''}
-              </strong>{' '}
-              de <strong>{editingRecord?.expand?.user?.name || 'Executivo'}</strong> caso haja
-              descontos ou acréscimos.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3 py-2">
-            <Label htmlFor="editTotal" className="text-xs font-semibold text-slate-700">
-              Valor Total do Mês (R$) <span className="text-red-500">*</span>
-            </Label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium">
-                R$
-              </span>
-              <Input
-                id="editTotal"
-                type="text"
-                value={editTotalInput}
-                onChange={(e) => setEditTotalInput(e.target.value)}
-                placeholder="15000,00"
-                className="pl-9 font-medium tabular-nums text-slate-900"
-                autoFocus
-                disabled={isSavingEdit}
-              />
-            </div>
-            <p className="text-[11px] text-slate-400">
-              Valor líquido a ser creditado neste período.
-            </p>
-          </div>
-
-          <DialogFooter className="gap-2 sm:gap-0 mt-2">
-            <Button
-              variant="outline"
-              onClick={() => setEditingRecord(null)}
-              disabled={isSavingEdit}
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleSaveEdit}
-              disabled={isSavingEdit}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
-            >
-              {isSavingEdit ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Salvando...
-                </>
-              ) : (
-                'Salvar Alteração'
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onSave={handleSaveEditRecord}
+      />
 
       {/* ======================================================== */}
       {/* MODAL 2: Editar Salário Fixo Cadastrado do Usuário */}

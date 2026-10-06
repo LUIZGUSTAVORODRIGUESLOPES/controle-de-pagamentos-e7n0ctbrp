@@ -3,6 +3,7 @@ import type {
   ReimbursementRecord,
   ReimbursementAnnualInput,
   ReimbursementMonthlyInput,
+  ReimbursementUpdateInput,
   ReimbursementStatus,
 } from '@/types/reimbursement'
 import type { UserRecord } from '@/types/pagamento'
@@ -213,6 +214,38 @@ export const reimbursementsService = {
       },
       { expand: 'user' },
     )
+  },
+
+  /**
+   * Update full reimbursement record.
+   */
+  async update(id: string, input: ReimbursementUpdateInput): Promise<ReimbursementRecord> {
+    const payload: Partial<ReimbursementRecord> = {}
+    if (input.user !== undefined) payload.user = input.user
+    if (input.reference_period !== undefined) payload.reference_period = input.reference_period
+    if (input.reference_year !== undefined) payload.reference_year = input.reference_year
+    if (input.type !== undefined) payload.type = input.type
+    if (input.base_salary !== undefined) {
+      payload.base_salary = Math.round((Number(input.base_salary) + Number.EPSILON) * 100) / 100
+    }
+    if (input.includes_abono !== undefined) payload.includes_abono = Boolean(input.includes_abono)
+    if (input.dissidio_amount !== undefined) {
+      payload.dissidio_amount =
+        Math.round((Number(input.dissidio_amount) + Number.EPSILON) * 100) / 100
+    }
+    if (input.total_amount !== undefined) {
+      payload.total_amount = Math.round((Number(input.total_amount) + Number.EPSILON) * 100) / 100
+    }
+    if (input.amount_paid !== undefined) {
+      payload.amount_paid = Math.round((Number(input.amount_paid) + Number.EPSILON) * 100) / 100
+    }
+    if (input.status !== undefined) {
+      payload.status = input.status
+    }
+
+    return pb.collection('reimbursements').update<ReimbursementRecord>(id, payload, {
+      expand: 'user',
+    })
   },
 
   /**

@@ -39,4 +39,17 @@ export interface ReimbursementMonthlyInput {
   amount_paid?: number
 }
 
+export interface ReimbursementUpdateInput {
+  user?: string
+  reference_period?: string
+  reference_year?: number
+  type?: ReimbursementType
+  base_salary?: number
+  includes_abono?: boolean
+  dissidio_amount?: number
+  total_amount?: number
+  amount_paid?: number
+  status?: ReimbursementStatus
+}
+
 export type ReimbursementInput = ReimbursementAnnualInput
