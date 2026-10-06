@@ -59,9 +59,9 @@ export function EditReimbursementModal({
   const [referencePeriod, setReferencePeriod] = useState<string>('')
   const [referenceYear, setReferenceYear] = useState<string>('')
   const [baseSalaryInput, setBaseSalaryInput] = useState<string>('')
-  const [includesTerco, setIncludesTerco] = useState<boolean>(false)
-  const [includesAbono, setIncludesAbono] = useState<boolean>(false)
-  const [vacationDaysInput, setVacationDaysInput] = useState<string>('0')
+  const [includesTerco, setIncludesTerco] = useState<boolean>(true)
+  const [temAbono, setTemAbono] = useState<boolean>(false)
+  const [vacationDaysInput, setVacationDaysInput] = useState<string>('30')
   const [dissidioInput, setDissidioInput] = useState<string>('')
   const [totalAmountInput, setTotalAmountInput] = useState<string>('')
   const [amountPaidInput, setAmountPaidInput] = useState<string>('')
@@ -91,12 +91,14 @@ export function EditReimbursementModal({
             })
           : '',
       )
-      setIncludesTerco(Boolean(record.includes_terco))
-      setIncludesAbono(Boolean(record.includes_abono))
+      setIncludesTerco(record.includes_terco !== undefined ? Boolean(record.includes_terco) : true)
+      setTemAbono(Boolean(record.includes_abono))
       setVacationDaysInput(
         record.vacation_days !== undefined && record.vacation_days !== null
-          ? String(record.vacation_days)
-          : '0',
+          ? String(Math.max(0, Math.min(30, Number(record.vacation_days))))
+          : record.type === 'anual'
+            ? '30'
+            : '0',
       )
       setDissidioInput(
         record.dissidio_amount !== undefined
@@ -140,6 +142,11 @@ export function EditReimbursementModal({
   const numericDissidio = useMemo(() => parseCurrency(dissidioInput), [dissidioInput])
   const numericTotal = useMemo(() => parseCurrency(totalAmountInput), [totalAmountInput])
   const numericPaid = useMemo(() => parseCurrency(amountPaidInput), [amountPaidInput])
+  const numericVacationDays = useMemo(() => {
+    const parsed = parseInt(vacationDaysInput, 10)
+    if (isNaN(parsed)) return 30
+    return Math.max(0, Math.min(30, parsed))
+  }, [vacationDaysInput])
 
   // Recalculate status automatically based on amount_paid vs total_amount
   // Regra registerPayment: quitado -> paid, parcial -> partial (> 0 e < total), zero -> pending
@@ -159,16 +166,21 @@ export function EditReimbursementModal({
     }
   }, [autoStatus, computedStatus])
 
-  // Quick recalculate total using Annual Formula
-  const handleRecalculateAnnual = () => {
-    const breakdown = calculateReimbursement({
+  // Quick recalculate total using Annual Formula com Proporcionalidade Completa
+  const annualBreakdown = useMemo(() => {
+    return calculateReimbursement({
       baseSalary: numericBaseSalary,
+      vacationDays: numericVacationDays,
+      temAbono,
+      includesAbono: temAbono,
       includesTerco,
-      includesAbono,
       dissidioAmount: numericDissidio,
     })
+  }, [numericBaseSalary, numericVacationDays, temAbono, includesTerco, numericDissidio])
+
+  const handleRecalculateAnnual = () => {
     setTotalAmountInput(
-      breakdown.totalAmount.toLocaleString('pt-BR', {
+      annualBreakdown.totalAmount.toLocaleString('pt-BR', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }),
@@ -208,8 +220,7 @@ export function EditReimbursementModal({
     const yearVal = parseInt(referenceYear, 10)
     const finalYear = isNaN(yearVal) ? undefined : yearVal
     const finalPeriod = referencePeriod.trim() || (finalYear ? String(finalYear) : undefined)
-    const parsedVacationDays = parseInt(vacationDaysInput, 10)
-    const finalVacationDays = isNaN(parsedVacationDays) ? 0 : Math.max(0, parsedVacationDays)
+    const finalVacationDays = type === 'anual' ? numericVacationDays : 0
 
     const payload: ReimbursementUpdateInput = {
       user: selectedUser || undefined,
@@ -218,8 +229,9 @@ export function EditReimbursementModal({
       reference_year: finalYear,
       base_salary: numericBaseSalary,
       includes_terco: type === 'anual' ? includesTerco : false,
-      includes_abono: type === 'anual' ? includesAbono : false,
-      vacation_days: type === 'anual' ? finalVacationDays : 0,
+      includes_abono: type === 'anual' ? temAbono : false,
+      tem_abono: type === 'anual' ? temAbono : false,
+      vacation_days: finalVacationDays,
       dissidio_amount: numericDissidio,
       total_amount: numericTotal,
       amount_paid: numericPaid,
@@ -411,38 +423,94 @@ export function EditReimbursementModal({
             </div>
           </div>
 
-          {/* Campos condicionais: Terço, Abono e Dias de Férias Gozados (para anual) */}
+          {/* Campos proporcionais: Dias Gozados, Abono Pecuniário (Select) e Terço */}
           {type === 'anual' && (
             <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="space-y-2">
-                  <label
-                    htmlFor="editIncludesTerco"
-                    className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-slate-800"
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* 2. Dias de Férias Gozados: input numérico, padrão 30, máx 30 */}
+                <div className="space-y-1">
+                  <Label
+                    htmlFor="editVacationDays"
+                    className="text-xs font-semibold text-slate-700 flex items-center justify-between"
                   >
-                    <Checkbox
-                      id="editIncludesTerco"
-                      checked={includesTerco}
-                      onCheckedChange={(checked) => setIncludesTerco(Boolean(checked))}
-                      disabled={isSaving}
-                      className="data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
-                    />
-                    <span>Adicionar Terço Constitucional de Férias (+1/3)</span>
-                  </label>
+                    <span>Dias de Férias Gozados</span>
+                    <span className="text-[10px] text-slate-400 font-normal">Máx. 30 dias</span>
+                  </Label>
+                  <Input
+                    id="editVacationDays"
+                    type="number"
+                    min={0}
+                    max={30}
+                    step={1}
+                    value={vacationDaysInput}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      if (val === '') {
+                        setVacationDaysInput('')
+                        return
+                      }
+                      const num = parseInt(val, 10)
+                      if (!isNaN(num)) {
+                        setVacationDaysInput(String(Math.min(30, Math.max(0, num))))
+                      }
+                    }}
+                    placeholder="30"
+                    className="text-xs font-medium tabular-nums text-slate-900 bg-white"
+                    disabled={isSaving}
+                  />
+                  <p className="text-[10px] text-slate-500">
+                    Valor das férias: ({formatBRL(numericBaseSalary)} / 30) × {numericVacationDays}{' '}
+                    dias = {formatBRL(annualBreakdown.valorFerias)}
+                  </p>
+                </div>
 
-                  <label
-                    htmlFor="editIncludesAbono"
-                    className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-slate-800"
+                {/* 3. Abono Pecuniário: Select "Não" (0 dias) ou "Sim (10 dias)" */}
+                <div className="space-y-1">
+                  <Label
+                    htmlFor="editAbonoSelect"
+                    className="text-xs font-semibold text-slate-700 flex items-center justify-between"
                   >
-                    <Checkbox
-                      id="editIncludesAbono"
-                      checked={includesAbono}
-                      onCheckedChange={(checked) => setIncludesAbono(Boolean(checked))}
-                      disabled={isSaving}
-                      className="data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
-                    />
-                    <span>Adicionar Abono Pecuniário de Férias (+1/3)</span>
-                  </label>
+                    <span>Abono Pecuniário (Vender Férias)</span>
+                    <span className="text-[10px] text-slate-400 font-normal">0 ou 10 dias</span>
+                  </Label>
+                  <Select
+                    value={temAbono ? 'sim' : 'nao'}
+                    onValueChange={(val) => setTemAbono(val === 'sim')}
+                    disabled={isSaving}
+                  >
+                    <SelectTrigger id="editAbonoSelect" className="text-xs bg-white">
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="nao" className="text-xs">
+                        Não (0 dias)
+                      </SelectItem>
+                      <SelectItem value="sim" className="text-xs">
+                        Sim (10 dias)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-slate-500">
+                    {temAbono
+                      ? `Abono: (${formatBRL(numericBaseSalary)} / 30) × 10 = ${formatBRL(annualBreakdown.valorAbono)}`
+                      : 'Sem venda de férias (R$ 0,00)'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-200">
+                <div className="text-[11px] text-slate-600">
+                  <span>Cálculo proporcional previsto: </span>
+                  <strong className="text-emerald-700 font-semibold tabular-nums">
+                    {formatBRL(annualBreakdown.totalAmount)}
+                  </strong>
+                  <span className="text-slate-400 text-[10px] ml-1">
+                    (Férias: {formatBRL(annualBreakdown.valorFerias + annualBreakdown.tercoFerias)}
+                    {temAbono
+                      ? ` + Abono: ${formatBRL(annualBreakdown.valorAbono + annualBreakdown.tercoAbono)}`
+                      : ''}
+                    {numericDissidio > 0 ? ` + Dissídio: ${formatBRL(numericDissidio)}` : ''})
+                  </span>
                 </div>
 
                 <Button
@@ -451,42 +519,12 @@ export function EditReimbursementModal({
                   size="sm"
                   onClick={handleRecalculateAnnual}
                   disabled={isSaving || numericBaseSalary <= 0}
-                  className="h-7 text-xs text-emerald-700 border-emerald-200 hover:bg-emerald-50 self-start sm:self-center"
-                  title="Recalcular o Valor Total pela soma de Salário Base + Terço + Abono + Dissídio"
+                  className="h-7 text-xs text-emerald-700 border-emerald-200 hover:bg-emerald-50 self-start sm:self-center shrink-0"
+                  title="Atualizar o campo de Valor Total pela fórmula proporcional"
                 >
                   <Calculator className="w-3 h-3 mr-1" />
-                  Recalcular Total
+                  Aplicar Fórmula no Total
                 </Button>
-              </div>
-
-              {/* Dias de Férias Gozados */}
-              <div className="pt-2 border-t border-slate-200/80">
-                <div className="max-w-xs space-y-1">
-                  <Label
-                    htmlFor="editVacationDays"
-                    className="text-xs font-semibold text-slate-700 flex items-center justify-between"
-                  >
-                    <span>Dias de Férias Gozados</span>
-                    <span className="text-[10px] text-slate-400 font-normal">
-                      Ex.: 20 ou 30 dias
-                    </span>
-                  </Label>
-                  <Input
-                    id="editVacationDays"
-                    type="number"
-                    min={0}
-                    max={60}
-                    step={1}
-                    value={vacationDaysInput}
-                    onChange={(e) => setVacationDaysInput(e.target.value)}
-                    placeholder="0"
-                    className="text-xs font-medium tabular-nums text-slate-900 bg-white"
-                    disabled={isSaving}
-                  />
-                  <p className="text-[10px] text-slate-500">
-                    Registro informativo de quantos dias de férias foram gozados pelo executivo.
-                  </p>
-                </div>
               </div>
             </div>
           )}

@@ -91,8 +91,8 @@ export default function Reimbursements() {
   const [referenceYear, setReferenceYear] = useState<string>(String(brazilCurrent.year))
   const [baseSalaryInput, setBaseSalaryInput] = useState<string>('15000,00')
   const [includesTerco, setIncludesTerco] = useState<boolean>(true)
-  const [includesAbono, setIncludesAbono] = useState<boolean>(false)
-  const [vacationDaysInput, setVacationDaysInput] = useState<string>('0')
+  const [temAbono, setTemAbono] = useState<boolean>(false)
+  const [vacationDaysInput, setVacationDaysInput] = useState<string>('30')
   const [dissidioInput, setDissidioInput] = useState<string>('0,00')
   const [isSubmittingAnnual, setIsSubmittingAnnual] = useState<boolean>(false)
   const [annualFormError, setAnnualFormError] = useState<string | null>(null)
@@ -318,16 +318,24 @@ export default function Reimbursements() {
     return isNaN(parsed) ? 0 : Math.abs(parsed)
   }, [dissidioInput])
 
+  const numericVacationDays = useMemo(() => {
+    const parsed = parseInt(vacationDaysInput, 10)
+    if (isNaN(parsed)) return 30
+    return Math.max(0, Math.min(30, parsed))
+  }, [vacationDaysInput])
+
   // Dynamic preview calculation for Aba 2 (Acertos Anuais)
-  // Rules: Salário Base + Terço Constitucional (+1/3) + Abono Pecuniário (+1/3) + Dissídio
+  // Rules Proporcionais: Férias Gozadas (dias × diária + 1/3) + Abono Pecuniário (10 dias × diária + 1/3) + Dissídio
   const annualBreakdown = useMemo(() => {
     return calculateReimbursement({
       baseSalary: numericBaseSalary,
+      vacationDays: numericVacationDays,
+      temAbono,
+      includesAbono: temAbono,
       includesTerco,
-      includesAbono,
       dissidioAmount: numericDissidio,
     })
-  }, [numericBaseSalary, includesTerco, includesAbono, numericDissidio])
+  }, [numericBaseSalary, numericVacationDays, temAbono, includesTerco, numericDissidio])
 
   // Summary statistics
   const stats = useMemo(() => {
@@ -592,8 +600,7 @@ export default function Reimbursements() {
     try {
       setIsSubmittingAnnual(true)
       const periodVal = referencePeriodAnnual.trim() || `${yearNum}`
-      const parsedDays = parseInt(vacationDaysInput, 10)
-      const vacationDaysVal = isNaN(parsedDays) ? 0 : Math.max(0, parsedDays)
+      const vacationDaysVal = numericVacationDays
 
       await reimbursementsService.createAnnual({
         user: selectedUserId,
@@ -601,7 +608,8 @@ export default function Reimbursements() {
         reference_period: periodVal,
         base_salary: numericBaseSalary,
         includes_terco: includesTerco,
-        includes_abono: includesAbono,
+        includes_abono: temAbono,
+        tem_abono: temAbono,
         vacation_days: vacationDaysVal,
         dissidio_amount: numericDissidio,
       })
@@ -613,8 +621,8 @@ export default function Reimbursements() {
 
       // Reset form
       setIncludesTerco(true)
-      setIncludesAbono(false)
-      setVacationDaysInput('0')
+      setTemAbono(false)
+      setVacationDaysInput('30')
       setDissidioInput('0,00')
       await fetchData()
       // Go to Aba 1 (mensais em aberto) where pending reimbursements live
@@ -1303,55 +1311,7 @@ export default function Reimbursements() {
                         </div>
                       </div>
 
-                      {/* 3. Checkbox: Adicionar Terço Constitucional de Férias (+1/3) */}
-                      <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 hover:bg-slate-50 transition-colors">
-                        <label
-                          htmlFor="annualIncludesTerco"
-                          className="flex items-start gap-3 cursor-pointer select-none"
-                        >
-                          <Checkbox
-                            id="annualIncludesTerco"
-                            checked={includesTerco}
-                            onCheckedChange={(checked) => setIncludesTerco(Boolean(checked))}
-                            disabled={isSubmittingAnnual}
-                            className="mt-0.5 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
-                          />
-                          <div className="space-y-0.5">
-                            <span className="text-xs font-semibold text-slate-800 block">
-                              Adicionar Terço Constitucional de Férias (+1/3)
-                            </span>
-                            <p className="text-[11px] text-slate-500 leading-snug">
-                              Soma + base_salary/3 referente ao 1/3 constitucional.
-                            </p>
-                          </div>
-                        </label>
-                      </div>
-
-                      {/* 4. Checkbox: Adicionar Abono Pecuniário de Férias (+1/3) */}
-                      <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 hover:bg-slate-50 transition-colors">
-                        <label
-                          htmlFor="annualIncludesAbono"
-                          className="flex items-start gap-3 cursor-pointer select-none"
-                        >
-                          <Checkbox
-                            id="annualIncludesAbono"
-                            checked={includesAbono}
-                            onCheckedChange={(checked) => setIncludesAbono(Boolean(checked))}
-                            disabled={isSubmittingAnnual}
-                            className="mt-0.5 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
-                          />
-                          <div className="space-y-0.5">
-                            <span className="text-xs font-semibold text-slate-800 block">
-                              Adicionar Abono Pecuniário de Férias (+1/3)
-                            </span>
-                            <p className="text-[11px] text-slate-500 leading-snug">
-                              Soma + base_salary/3 referente ao abono pecuniário (venda de 10 dias).
-                            </p>
-                          </div>
-                        </label>
-                      </div>
-
-                      {/* 5. Dias de Férias Gozados */}
+                      {/* 2. Dias de Férias Gozados (padrão 30, máx 30) */}
                       <div className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50/50 p-3">
                         <Label
                           htmlFor="annualVacationDays"
@@ -1359,24 +1319,72 @@ export default function Reimbursements() {
                         >
                           <span>Dias de Férias Gozados</span>
                           <span className="text-[11px] text-slate-400 font-normal">
-                            Ex.: 20 ou 30 dias
+                            Máx. 30 dias (padrão: 30)
                           </span>
                         </Label>
                         <Input
                           id="annualVacationDays"
                           type="number"
                           min={0}
-                          max={60}
+                          max={30}
                           step={1}
                           value={vacationDaysInput}
-                          onChange={(e) => setVacationDaysInput(e.target.value)}
-                          placeholder="0"
-                          className="tabular-nums text-slate-800 bg-white"
+                          onChange={(e) => {
+                            const val = e.target.value
+                            if (val === '') {
+                              setVacationDaysInput('')
+                              return
+                            }
+                            const num = parseInt(val, 10)
+                            if (!isNaN(num)) {
+                              setVacationDaysInput(String(Math.min(30, Math.max(0, num))))
+                            }
+                          }}
+                          placeholder="30"
+                          className="tabular-nums text-slate-800 bg-white text-xs"
                           disabled={isSubmittingAnnual}
                         />
                         <p className="text-[11px] text-slate-500 leading-snug">
-                          Informe a quantidade de dias de férias usufruídos no período para controle
-                          e recibo.
+                          Férias proporcionais: (Salário / 30) × {numericVacationDays} dias ={' '}
+                          {formatBRL(annualBreakdown.valorFerias)}
+                        </p>
+                      </div>
+
+                      {/* 3. Abono Pecuniário (Vender Férias) — Select com "Não" (0 dias) e "Sim (10 dias)" */}
+                      <div className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+                        <Label
+                          htmlFor="annualAbonoSelect"
+                          className="text-xs font-semibold text-slate-700 flex items-center justify-between"
+                        >
+                          <span>Abono Pecuniário (Vender Férias)</span>
+                          <span className="text-[11px] text-slate-400 font-normal">
+                            0 ou 10 dias
+                          </span>
+                        </Label>
+                        <Select
+                          value={temAbono ? 'sim' : 'nao'}
+                          onValueChange={(val) => setTemAbono(val === 'sim')}
+                          disabled={isSubmittingAnnual}
+                        >
+                          <SelectTrigger
+                            id="annualAbonoSelect"
+                            className="text-slate-800 text-xs bg-white"
+                          >
+                            <SelectValue placeholder="Selecione..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="nao" className="text-xs">
+                              Não (0 dias)
+                            </SelectItem>
+                            <SelectItem value="sim" className="text-xs">
+                              Sim (10 dias)
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-[11px] text-slate-500 leading-snug">
+                          {temAbono
+                            ? `Venda de 10 dias: (Salário / 30) × 10 = ${formatBRL(annualBreakdown.valorAbono)} (+ 1/3 = ${formatBRL(annualBreakdown.tercoAbono)})`
+                            : 'Sem conversão de férias em abono pecuniário.'}
                         </p>
                       </div>
 
@@ -1473,31 +1481,32 @@ export default function Reimbursements() {
                       </h4>
 
                       <div className="space-y-2 text-xs text-slate-700">
-                        {/* 1. Salário Base */}
-                        <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
+                        {/* Diária de referência */}
+                        <div className="flex items-center justify-between py-1 border-b border-slate-100 text-slate-500">
                           <div>
-                            <span className="font-semibold text-slate-800">Salário Base</span>
-                            <p className="text-[10px] text-slate-400">Valor base integral</p>
+                            <span>Diária Base (Salário / 30)</span>
+                            <p className="text-[10px] text-slate-400">
+                              {formatBRL(annualBreakdown.baseSalary)} / 30
+                            </p>
                           </div>
-                          <span className="font-semibold tabular-nums text-slate-900">
-                            {formatBRL(annualBreakdown.baseSalary)}
+                          <span className="font-medium tabular-nums text-slate-600">
+                            {formatBRL(annualBreakdown.dailyRate)} / dia
                           </span>
                         </div>
 
-                        {/* 1.1 Dias de Férias Gozados (Informativo) */}
-                        <div className="flex items-center justify-between py-1.5 border-b border-slate-100 bg-slate-50/60 px-2 rounded">
+                        {/* 1. Valor das Férias (dias × diária) */}
+                        <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
                           <div>
                             <span className="font-semibold text-slate-800">
-                              Dias de Férias Gozados
+                              Valor das Férias ({annualBreakdown.diasGozados} dias × diária)
                             </span>
                             <p className="text-[10px] text-slate-400">
-                              Informativo para registro e recibo
+                              ({formatBRL(annualBreakdown.baseSalary)} / 30) ×{' '}
+                              {annualBreakdown.diasGozados}
                             </p>
                           </div>
-                          <span className="font-semibold tabular-nums text-slate-700">
-                            {parseInt(vacationDaysInput, 10) > 0
-                              ? `${parseInt(vacationDaysInput, 10)} dia(s)`
-                              : '0 dias'}
+                          <span className="font-semibold tabular-nums text-slate-900">
+                            {formatBRL(annualBreakdown.valorFerias)}
                           </span>
                         </div>
 
@@ -1507,45 +1516,54 @@ export default function Reimbursements() {
                             <span className="font-semibold text-slate-800">
                               Terço de Férias (+1/3)
                             </span>
-                            <p className="text-[10px] text-slate-400">
-                              {includesTerco
-                                ? '+ base_salary / 3 (selecionado)'
-                                : 'Não selecionado (R$ 0,00)'}
-                            </p>
+                            <p className="text-[10px] text-slate-400">Valor das Férias / 3</p>
                           </div>
-                          <span
-                            className={`font-semibold tabular-nums ${includesTerco ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}
-                          >
+                          <span className="font-semibold tabular-nums text-emerald-700">
                             {formatBRL(annualBreakdown.tercoFerias)}
                           </span>
                         </div>
 
-                        {/* 3. Abono Pecuniário */}
+                        {/* 3. Abono Pecuniário (dias × diária) */}
                         <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
                           <div>
                             <span className="font-semibold text-slate-800">
-                              Abono Pecuniário (+1/3)
+                              Abono Pecuniário ({annualBreakdown.diasAbono} dias × diária)
                             </span>
                             <p className="text-[10px] text-slate-400">
-                              {includesAbono
-                                ? '+ base_salary / 3 (selecionado)'
-                                : 'Não selecionado (R$ 0,00)'}
+                              {annualBreakdown.temAbono
+                                ? `(${formatBRL(annualBreakdown.baseSalary)} / 30) × 10`
+                                : 'Não selecionado (0 dias)'}
                             </p>
                           </div>
                           <span
-                            className={`font-semibold tabular-nums ${includesAbono ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}
+                            className={`font-semibold tabular-nums ${annualBreakdown.temAbono ? 'text-slate-900 font-bold' : 'text-slate-400'}`}
                           >
-                            {formatBRL(annualBreakdown.abonoAmount)}
+                            {formatBRL(annualBreakdown.valorAbono)}
                           </span>
                         </div>
 
-                        {/* 4. Dissídio */}
+                        {/* 4. Terço do Abono */}
                         <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
                           <div>
-                            <span className="font-semibold text-slate-800">Dissídio</span>
-                            <p className="text-[10px] text-slate-400">
-                              Retroativo de dissídio coletivo
-                            </p>
+                            <span className="font-semibold text-slate-800">
+                              Terço do Abono (+1/3)
+                            </span>
+                            <p className="text-[10px] text-slate-400">Valor do Abono / 3</p>
+                          </div>
+                          <span
+                            className={`font-semibold tabular-nums ${annualBreakdown.temAbono ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}
+                          >
+                            {formatBRL(annualBreakdown.tercoAbono)}
+                          </span>
+                        </div>
+
+                        {/* 5. Dissídio */}
+                        <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
+                          <div>
+                            <span className="font-semibold text-slate-800">
+                              Retroativo de Dissídio
+                            </span>
+                            <p className="text-[10px] text-slate-400">Ajuste salarial retroativo</p>
                           </div>
                           <span
                             className={`font-semibold tabular-nums ${numericDissidio > 0 ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}
@@ -1554,10 +1572,10 @@ export default function Reimbursements() {
                           </span>
                         </div>
 
-                        {/* 5. Total */}
+                        {/* 6. Total */}
                         <div className="flex items-center justify-between py-2 bg-emerald-50/80 px-2.5 rounded-lg font-bold text-emerald-900 border border-emerald-200">
                           <span>Total</span>
-                          <span className="tabular-nums text-sm">
+                          <span className="tabular-nums text-base">
                             {formatBRL(annualBreakdown.totalAmount)}
                           </span>
                         </div>
@@ -2200,7 +2218,7 @@ export default function Reimbursements() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {receiptRecord.base_salary && (
+                  {receiptRecord.base_salary ? (
                     <tr>
                       <td className="p-2.5 font-medium text-slate-900">
                         Salário Base de Referência
@@ -2209,37 +2227,71 @@ export default function Reimbursements() {
                         {formatBRL(receiptRecord.base_salary)}
                       </td>
                     </tr>
-                  )}
-                  {receiptRecord.type === 'anual' &&
-                    receiptRecord.vacation_days !== undefined &&
-                    receiptRecord.vacation_days > 0 && (
-                      <tr className="bg-slate-50/50">
-                        <td className="p-2.5 font-medium text-slate-900">Dias de Férias Gozados</td>
-                        <td className="p-2.5 text-right font-medium text-slate-700">
-                          {receiptRecord.vacation_days} dia(s)
-                        </td>
-                      </tr>
-                    )}
-                  {receiptRecord.includes_terco && (
-                    <tr>
-                      <td className="p-2.5 font-medium text-slate-900">
-                        Terço Constitucional de Férias (+1/3)
-                      </td>
-                      <td className="p-2.5 text-right font-medium text-emerald-800">
-                        {formatBRL((receiptRecord.base_salary || 0) / 3)}
-                      </td>
-                    </tr>
-                  )}
-                  {receiptRecord.includes_abono && (
-                    <tr>
-                      <td className="p-2.5 font-medium text-slate-900">
-                        Abono Pecuniário de Férias (+1/3)
-                      </td>
-                      <td className="p-2.5 text-right font-medium text-emerald-800">
-                        {formatBRL((receiptRecord.base_salary || 0) / 3)}
-                      </td>
-                    </tr>
-                  )}
+                  ) : null}
+
+                  {receiptRecord.type === 'anual'
+                    ? (() => {
+                        const base = Number(receiptRecord.base_salary || 0)
+                        const diasGozados =
+                          receiptRecord.vacation_days !== undefined &&
+                          receiptRecord.vacation_days !== null
+                            ? Number(receiptRecord.vacation_days)
+                            : 30
+                        const valorFerias = (base / 30) * diasGozados
+                        const tercoFerias =
+                          receiptRecord.includes_terco !== false ? valorFerias / 3 : 0
+                        const temAbono = Boolean(receiptRecord.includes_abono)
+                        const diasAbono = temAbono ? 10 : 0
+                        const valorAbono = (base / 30) * diasAbono
+                        const tercoAbono = valorAbono / 3
+
+                        return (
+                          <>
+                            <tr className="bg-slate-50/50">
+                              <td className="p-2.5 font-medium text-slate-900">
+                                Valor das Férias ({diasGozados} dias × diária de{' '}
+                                {formatBRL(base / 30)})
+                              </td>
+                              <td className="p-2.5 text-right font-medium text-slate-900">
+                                {formatBRL(valorFerias)}
+                              </td>
+                            </tr>
+                            {receiptRecord.includes_terco !== false && (
+                              <tr>
+                                <td className="p-2.5 font-medium text-slate-900">
+                                  Terço Constitucional de Férias (+1/3 sobre férias gozadas)
+                                </td>
+                                <td className="p-2.5 text-right font-medium text-emerald-800">
+                                  {formatBRL(tercoFerias)}
+                                </td>
+                              </tr>
+                            )}
+                            {temAbono && (
+                              <>
+                                <tr className="bg-slate-50/50">
+                                  <td className="p-2.5 font-medium text-slate-900">
+                                    Abono Pecuniário ({diasAbono} dias × diária de{' '}
+                                    {formatBRL(base / 30)})
+                                  </td>
+                                  <td className="p-2.5 text-right font-medium text-slate-900">
+                                    {formatBRL(valorAbono)}
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td className="p-2.5 font-medium text-slate-900">
+                                    Terço do Abono Pecuniário (+1/3)
+                                  </td>
+                                  <td className="p-2.5 text-right font-medium text-emerald-800">
+                                    {formatBRL(tercoAbono)}
+                                  </td>
+                                </tr>
+                              </>
+                            )}
+                          </>
+                        )
+                      })()
+                    : null}
+
                   {receiptRecord.dissidio_amount && receiptRecord.dissidio_amount > 0 ? (
                     <tr>
                       <td className="p-2.5 font-medium text-slate-900">

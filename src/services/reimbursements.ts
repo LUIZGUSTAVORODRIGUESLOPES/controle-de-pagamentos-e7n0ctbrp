@@ -106,10 +106,18 @@ export const reimbursementsService = {
    * Default status is 'pending', type is 'anual'.
    */
   async createAnnual(input: ReimbursementAnnualInput): Promise<ReimbursementRecord> {
+    const temAbono = Boolean(input.tem_abono ?? input.includes_abono)
+    const vacationDays =
+      input.vacation_days !== undefined
+        ? Math.max(0, Math.min(30, Number(input.vacation_days) || 0))
+        : 30
+
     const breakdown = calculateReimbursement({
       baseSalary: Number(input.base_salary) || 0,
-      includesTerco: Boolean(input.includes_terco),
-      includesAbono: Boolean(input.includes_abono),
+      vacationDays,
+      temAbono,
+      includesAbono: temAbono,
+      includesTerco: input.includes_terco !== undefined ? Boolean(input.includes_terco) : true,
       dissidioAmount: Number(input.dissidio_amount) || 0,
     })
 
@@ -131,9 +139,9 @@ export const reimbursementsService = {
         reference_period: period,
         type: 'anual',
         base_salary: Number(input.base_salary),
-        includes_terco: Boolean(input.includes_terco),
-        includes_abono: Boolean(input.includes_abono),
-        vacation_days: input.vacation_days !== undefined ? Number(input.vacation_days) : 0,
+        includes_terco: input.includes_terco !== undefined ? Boolean(input.includes_terco) : true,
+        includes_abono: temAbono,
+        vacation_days: vacationDays,
         dissidio_amount: Math.abs(Number(input.dissidio_amount) || 0),
         total_amount: breakdown.totalAmount,
         amount_paid: amountPaid,
@@ -233,9 +241,16 @@ export const reimbursementsService = {
       payload.base_salary = Math.round((Number(input.base_salary) + Number.EPSILON) * 100) / 100
     }
     if (input.includes_terco !== undefined) payload.includes_terco = Boolean(input.includes_terco)
-    if (input.includes_abono !== undefined) payload.includes_abono = Boolean(input.includes_abono)
+    if (input.includes_abono !== undefined) {
+      payload.includes_abono = Boolean(input.includes_abono)
+    } else if (input.tem_abono !== undefined) {
+      payload.includes_abono = Boolean(input.tem_abono)
+    }
     if (input.vacation_days !== undefined) {
-      payload.vacation_days = Math.max(0, Math.round(Number(input.vacation_days) || 0))
+      payload.vacation_days = Math.max(
+        0,
+        Math.min(30, Math.round(Number(input.vacation_days) || 0)),
+      )
     }
     if (input.dissidio_amount !== undefined) {
       payload.dissidio_amount =

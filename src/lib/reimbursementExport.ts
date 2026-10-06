@@ -99,8 +99,11 @@ export function exportReimbursementsToCsv(
     'E-mail',
     'Salário Base (R$)',
     'Dias de Férias Gozados',
-    '1/3 Constitucional de Férias',
-    'Abono Pecuniário',
+    'Valor das Férias (R$)',
+    '1/3 Constitucional de Férias (R$)',
+    'Abono Pecuniário (Dias)',
+    'Valor do Abono (R$)',
+    '1/3 do Abono (R$)',
     'Dissídio (R$)',
     'Valor Total (R$)',
     'Valor Pago (R$)',
@@ -114,15 +117,34 @@ export function exportReimbursementsToCsv(
     const periodo = r.reference_period || (r.reference_year ? String(r.reference_year) : '-')
     const usuario = r.expand?.user?.name || 'Executivo'
     const email = r.expand?.user?.email || '-'
-    const salarioBase = Number(r.base_salary || 0)
-      .toFixed(2)
-      .replace('.', ',')
-    const diasFerias =
+    const baseVal = Number(r.base_salary || 0)
+    const salarioBase = baseVal.toFixed(2).replace('.', ',')
+
+    const diasFeriasNum =
       r.type === 'anual' && r.vacation_days !== undefined && r.vacation_days !== null
-        ? String(r.vacation_days)
-        : '-'
-    const terco = r.includes_terco ? 'Sim (+1/3)' : 'Não'
-    const abono = r.includes_abono ? 'Sim (10 dias)' : 'Não'
+        ? Number(r.vacation_days)
+        : r.type === 'anual'
+          ? 30
+          : 0
+    const diasFeriasStr = r.type === 'anual' ? String(diasFeriasNum) : '-'
+
+    // Proporcionalidade exata para cálculo dos componentes
+    const valorFeriasNum = r.type === 'anual' ? (baseVal / 30) * diasFeriasNum : 0
+    const valorFeriasStr = r.type === 'anual' ? valorFeriasNum.toFixed(2).replace('.', ',') : '-'
+
+    const tercoFeriasNum = r.type === 'anual' && r.includes_terco !== false ? valorFeriasNum / 3 : 0
+    const tercoFeriasStr = r.type === 'anual' ? tercoFeriasNum.toFixed(2).replace('.', ',') : '-'
+
+    const abonoSim = Boolean(r.includes_abono)
+    const diasAbonoNum = r.type === 'anual' && abonoSim ? 10 : 0
+    const abonoStr = r.type === 'anual' ? (abonoSim ? 'Sim (10 dias)' : 'Não') : '-'
+
+    const valorAbonoNum = r.type === 'anual' ? (baseVal / 30) * diasAbonoNum : 0
+    const valorAbonoStr = r.type === 'anual' ? valorAbonoNum.toFixed(2).replace('.', ',') : '-'
+
+    const tercoAbonoNum = r.type === 'anual' ? valorAbonoNum / 3 : 0
+    const tercoAbonoStr = r.type === 'anual' ? tercoAbonoNum.toFixed(2).replace('.', ',') : '-'
+
     const dissidio = Number(r.dissidio_amount || 0)
       .toFixed(2)
       .replace('.', ',')
@@ -145,9 +167,12 @@ export function exportReimbursementsToCsv(
       escapeCsvField(usuario),
       escapeCsvField(email),
       escapeCsvField(salarioBase),
-      escapeCsvField(diasFerias),
-      escapeCsvField(terco),
-      escapeCsvField(abono),
+      escapeCsvField(diasFeriasStr),
+      escapeCsvField(valorFeriasStr),
+      escapeCsvField(tercoFeriasStr),
+      escapeCsvField(abonoStr),
+      escapeCsvField(valorAbonoStr),
+      escapeCsvField(tercoAbonoStr),
       escapeCsvField(dissidio),
       escapeCsvField(total),
       escapeCsvField(pago),
