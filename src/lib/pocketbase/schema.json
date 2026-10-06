@@ -1,0 +1,145 @@
+{
+  "generatedAt": "2026-10-06T12:34:53.475Z",
+  "collections": [
+    {
+      "name": "users",
+      "type": "auth",
+      "apiRules": {
+        "list": "id = @request.auth.id",
+        "view": "id = @request.auth.id",
+        "create": "",
+        "update": "id = @request.auth.id",
+        "delete": "id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "avatar",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX `idx_tokenKey__pb_users_auth_` ON `users` (`tokenKey`)",
+        "CREATE UNIQUE INDEX `idx_email__pb_users_auth_` ON `users` (`email`) WHERE `email` != ''"
+      ]
+    },
+    {
+      "name": "pagamentos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && user = @request.auth.id",
+        "view": "@request.auth.id != '' && user = @request.auth.id",
+        "create": "@request.auth.id != '' && user = @request.auth.id",
+        "update": "@request.auth.id != '' && user = @request.auth.id",
+        "delete": "@request.auth.id != '' && user = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "Mes_Ano",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "Data_Pagamento",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "Tipo_Pagamento",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "Mensalidade Padrão",
+            "Férias",
+            "Saldo de Salário (pós-férias)",
+            "13º Salário - 1ª Parcela",
+            "13º Salário - 2ª Parcela",
+            "13º Salário - Integral"
+          ]
+        },
+        {
+          "name": "Valor_Base",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "Dias_Ferias_Gozadas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "Dias_Ferias_Vendidas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "Valor_Liquido",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "Status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Pendente", "Pago"]
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_pagamentos_status ON pagamentos (Status)",
+        "CREATE INDEX idx_pagamentos_data ON pagamentos (Data_Pagamento DESC)",
+        "CREATE INDEX idx_pagamentos_user ON pagamentos (user)",
+        "CREATE INDEX idx_pagamentos_user_data ON pagamentos (user, Data_Pagamento DESC)"
+      ]
+    }
+  ]
+}
