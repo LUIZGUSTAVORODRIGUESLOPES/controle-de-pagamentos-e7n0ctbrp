@@ -21,6 +21,7 @@ export interface ReimbursementRecord extends RecordModel {
   base_salary?: number
   includes_terco?: boolean
   includes_abono?: boolean
+  vacation_days?: number
   dissidio_amount?: number
   total_amount: number
   amount_paid?: number
@@ -39,6 +40,7 @@ export interface ReimbursementAnnualInput {
   base_salary: number
   includes_terco?: boolean
   includes_abono?: boolean
+  vacation_days?: number
   dissidio_amount: number
   amount_paid?: number
 }
@@ -59,6 +61,7 @@ export interface ReimbursementUpdateInput {
   base_salary?: number
   includes_terco?: boolean
   includes_abono?: boolean
+  vacation_days?: number
   dissidio_amount?: number
   total_amount?: number
   amount_paid?: number

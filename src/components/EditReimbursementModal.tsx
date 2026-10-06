@@ -61,6 +61,7 @@ export function EditReimbursementModal({
   const [baseSalaryInput, setBaseSalaryInput] = useState<string>('')
   const [includesTerco, setIncludesTerco] = useState<boolean>(false)
   const [includesAbono, setIncludesAbono] = useState<boolean>(false)
+  const [vacationDaysInput, setVacationDaysInput] = useState<string>('0')
   const [dissidioInput, setDissidioInput] = useState<string>('')
   const [totalAmountInput, setTotalAmountInput] = useState<string>('')
   const [amountPaidInput, setAmountPaidInput] = useState<string>('')
@@ -92,6 +93,11 @@ export function EditReimbursementModal({
       )
       setIncludesTerco(Boolean(record.includes_terco))
       setIncludesAbono(Boolean(record.includes_abono))
+      setVacationDaysInput(
+        record.vacation_days !== undefined && record.vacation_days !== null
+          ? String(record.vacation_days)
+          : '0',
+      )
       setDissidioInput(
         record.dissidio_amount !== undefined
           ? record.dissidio_amount.toLocaleString('pt-BR', {
@@ -202,6 +208,8 @@ export function EditReimbursementModal({
     const yearVal = parseInt(referenceYear, 10)
     const finalYear = isNaN(yearVal) ? undefined : yearVal
     const finalPeriod = referencePeriod.trim() || (finalYear ? String(finalYear) : undefined)
+    const parsedVacationDays = parseInt(vacationDaysInput, 10)
+    const finalVacationDays = isNaN(parsedVacationDays) ? 0 : Math.max(0, parsedVacationDays)
 
     const payload: ReimbursementUpdateInput = {
       user: selectedUser || undefined,
@@ -211,6 +219,7 @@ export function EditReimbursementModal({
       base_salary: numericBaseSalary,
       includes_terco: type === 'anual' ? includesTerco : false,
       includes_abono: type === 'anual' ? includesAbono : false,
+      vacation_days: type === 'anual' ? finalVacationDays : 0,
       dissidio_amount: numericDissidio,
       total_amount: numericTotal,
       amount_paid: numericPaid,
@@ -402,9 +411,9 @@ export function EditReimbursementModal({
             </div>
           </div>
 
-          {/* Campos condicionais: Terço e Abono (para anual) */}
+          {/* Campos condicionais: Terço, Abono e Dias de Férias Gozados (para anual) */}
           {type === 'anual' && (
-            <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="space-y-2">
                   <label
@@ -448,6 +457,36 @@ export function EditReimbursementModal({
                   <Calculator className="w-3 h-3 mr-1" />
                   Recalcular Total
                 </Button>
+              </div>
+
+              {/* Dias de Férias Gozados */}
+              <div className="pt-2 border-t border-slate-200/80">
+                <div className="max-w-xs space-y-1">
+                  <Label
+                    htmlFor="editVacationDays"
+                    className="text-xs font-semibold text-slate-700 flex items-center justify-between"
+                  >
+                    <span>Dias de Férias Gozados</span>
+                    <span className="text-[10px] text-slate-400 font-normal">
+                      Ex.: 20 ou 30 dias
+                    </span>
+                  </Label>
+                  <Input
+                    id="editVacationDays"
+                    type="number"
+                    min={0}
+                    max={60}
+                    step={1}
+                    value={vacationDaysInput}
+                    onChange={(e) => setVacationDaysInput(e.target.value)}
+                    placeholder="0"
+                    className="text-xs font-medium tabular-nums text-slate-900 bg-white"
+                    disabled={isSaving}
+                  />
+                  <p className="text-[10px] text-slate-500">
+                    Registro informativo de quantos dias de férias foram gozados pelo executivo.
+                  </p>
+                </div>
               </div>
             </div>
           )}

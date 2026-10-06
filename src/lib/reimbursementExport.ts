@@ -98,6 +98,7 @@ export function exportReimbursementsToCsv(
     'Executivo / Usuário',
     'E-mail',
     'Salário Base (R$)',
+    'Dias de Férias Gozados',
     '1/3 Constitucional de Férias',
     'Abono Pecuniário',
     'Dissídio (R$)',
@@ -116,6 +117,10 @@ export function exportReimbursementsToCsv(
     const salarioBase = Number(r.base_salary || 0)
       .toFixed(2)
       .replace('.', ',')
+    const diasFerias =
+      r.type === 'anual' && r.vacation_days !== undefined && r.vacation_days !== null
+        ? String(r.vacation_days)
+        : '-'
     const terco = r.includes_terco ? 'Sim (+1/3)' : 'Não'
     const abono = r.includes_abono ? 'Sim (10 dias)' : 'Não'
     const dissidio = Number(r.dissidio_amount || 0)
@@ -140,6 +145,7 @@ export function exportReimbursementsToCsv(
       escapeCsvField(usuario),
       escapeCsvField(email),
       escapeCsvField(salarioBase),
+      escapeCsvField(diasFerias),
       escapeCsvField(terco),
       escapeCsvField(abono),
       escapeCsvField(dissidio),

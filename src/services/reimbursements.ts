@@ -133,6 +133,7 @@ export const reimbursementsService = {
         base_salary: Number(input.base_salary),
         includes_terco: Boolean(input.includes_terco),
         includes_abono: Boolean(input.includes_abono),
+        vacation_days: input.vacation_days !== undefined ? Number(input.vacation_days) : 0,
         dissidio_amount: Math.abs(Number(input.dissidio_amount) || 0),
         total_amount: breakdown.totalAmount,
         amount_paid: amountPaid,
@@ -233,6 +234,9 @@ export const reimbursementsService = {
     }
     if (input.includes_terco !== undefined) payload.includes_terco = Boolean(input.includes_terco)
     if (input.includes_abono !== undefined) payload.includes_abono = Boolean(input.includes_abono)
+    if (input.vacation_days !== undefined) {
+      payload.vacation_days = Math.max(0, Math.round(Number(input.vacation_days) || 0))
+    }
     if (input.dissidio_amount !== undefined) {
       payload.dissidio_amount =
         Math.round((Number(input.dissidio_amount) + Number.EPSILON) * 100) / 100

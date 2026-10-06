@@ -92,6 +92,7 @@ export default function Reimbursements() {
   const [baseSalaryInput, setBaseSalaryInput] = useState<string>('15000,00')
   const [includesTerco, setIncludesTerco] = useState<boolean>(true)
   const [includesAbono, setIncludesAbono] = useState<boolean>(false)
+  const [vacationDaysInput, setVacationDaysInput] = useState<string>('0')
   const [dissidioInput, setDissidioInput] = useState<string>('0,00')
   const [isSubmittingAnnual, setIsSubmittingAnnual] = useState<boolean>(false)
   const [annualFormError, setAnnualFormError] = useState<string | null>(null)
@@ -591,6 +592,9 @@ export default function Reimbursements() {
     try {
       setIsSubmittingAnnual(true)
       const periodVal = referencePeriodAnnual.trim() || `${yearNum}`
+      const parsedDays = parseInt(vacationDaysInput, 10)
+      const vacationDaysVal = isNaN(parsedDays) ? 0 : Math.max(0, parsedDays)
+
       await reimbursementsService.createAnnual({
         user: selectedUserId,
         reference_year: yearNum,
@@ -598,6 +602,7 @@ export default function Reimbursements() {
         base_salary: numericBaseSalary,
         includes_terco: includesTerco,
         includes_abono: includesAbono,
+        vacation_days: vacationDaysVal,
         dissidio_amount: numericDissidio,
       })
 
@@ -609,6 +614,7 @@ export default function Reimbursements() {
       // Reset form
       setIncludesTerco(true)
       setIncludesAbono(false)
+      setVacationDaysInput('0')
       setDissidioInput('0,00')
       await fetchData()
       // Go to Aba 1 (mensais em aberto) where pending reimbursements live
@@ -1053,6 +1059,13 @@ export default function Reimbursements() {
 
                               <td className="p-3 text-right text-slate-600 tabular-nums whitespace-nowrap">
                                 {item.base_salary ? formatBRL(item.base_salary) : '-'}
+                                {item.type === 'anual' &&
+                                  item.vacation_days !== undefined &&
+                                  item.vacation_days > 0 && (
+                                    <div className="text-[10px] text-amber-700 font-medium">
+                                      {item.vacation_days}d férias
+                                    </div>
+                                  )}
                               </td>
 
                               <td className="p-3 text-right font-bold text-sm text-slate-900 tabular-nums whitespace-nowrap">
@@ -1338,7 +1351,36 @@ export default function Reimbursements() {
                         </label>
                       </div>
 
-                      {/* 5. Input para Retroativo de Dissídio */}
+                      {/* 5. Dias de Férias Gozados */}
+                      <div className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+                        <Label
+                          htmlFor="annualVacationDays"
+                          className="text-xs font-semibold text-slate-700 flex items-center justify-between"
+                        >
+                          <span>Dias de Férias Gozados</span>
+                          <span className="text-[11px] text-slate-400 font-normal">
+                            Ex.: 20 ou 30 dias
+                          </span>
+                        </Label>
+                        <Input
+                          id="annualVacationDays"
+                          type="number"
+                          min={0}
+                          max={60}
+                          step={1}
+                          value={vacationDaysInput}
+                          onChange={(e) => setVacationDaysInput(e.target.value)}
+                          placeholder="0"
+                          className="tabular-nums text-slate-800 bg-white"
+                          disabled={isSubmittingAnnual}
+                        />
+                        <p className="text-[11px] text-slate-500 leading-snug">
+                          Informe a quantidade de dias de férias usufruídos no período para controle
+                          e recibo.
+                        </p>
+                      </div>
+
+                      {/* 6. Input para Retroativo de Dissídio */}
                       <div className="space-y-1.5">
                         <Label
                           htmlFor="annualDissidio"
@@ -1439,6 +1481,23 @@ export default function Reimbursements() {
                           </div>
                           <span className="font-semibold tabular-nums text-slate-900">
                             {formatBRL(annualBreakdown.baseSalary)}
+                          </span>
+                        </div>
+
+                        {/* 1.1 Dias de Férias Gozados (Informativo) */}
+                        <div className="flex items-center justify-between py-1.5 border-b border-slate-100 bg-slate-50/60 px-2 rounded">
+                          <div>
+                            <span className="font-semibold text-slate-800">
+                              Dias de Férias Gozados
+                            </span>
+                            <p className="text-[10px] text-slate-400">
+                              Informativo para registro e recibo
+                            </p>
+                          </div>
+                          <span className="font-semibold tabular-nums text-slate-700">
+                            {parseInt(vacationDaysInput, 10) > 0
+                              ? `${parseInt(vacationDaysInput, 10)} dia(s)`
+                              : '0 dias'}
                           </span>
                         </div>
 
@@ -1674,6 +1733,13 @@ export default function Reimbursements() {
                               </td>
 
                               <td className="p-3 text-right tabular-nums text-slate-600 whitespace-nowrap">
+                                {item.type === 'anual' &&
+                                  item.vacation_days !== undefined &&
+                                  item.vacation_days > 0 && (
+                                    <span className="inline-block px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 text-[10px] mr-1 font-medium">
+                                      {item.vacation_days}d férias
+                                    </span>
+                                  )}
                                 {item.includes_terco && (
                                   <span className="inline-block px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] mr-1">
                                     +1/3 Férias
@@ -1688,7 +1754,9 @@ export default function Reimbursements() {
                                   <span className="inline-block px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[10px]">
                                     +{formatBRL(item.dissidio_amount)}
                                   </span>
-                                ) : !item.includes_abono && !item.includes_terco ? (
+                                ) : !item.includes_abono &&
+                                  !item.includes_terco &&
+                                  !(item.type === 'anual' && item.vacation_days) ? (
                                   '-'
                                 ) : null}
                               </td>
@@ -2142,6 +2210,16 @@ export default function Reimbursements() {
                       </td>
                     </tr>
                   )}
+                  {receiptRecord.type === 'anual' &&
+                    receiptRecord.vacation_days !== undefined &&
+                    receiptRecord.vacation_days > 0 && (
+                      <tr className="bg-slate-50/50">
+                        <td className="p-2.5 font-medium text-slate-900">Dias de Férias Gozados</td>
+                        <td className="p-2.5 text-right font-medium text-slate-700">
+                          {receiptRecord.vacation_days} dia(s)
+                        </td>
+                      </tr>
+                    )}
                   {receiptRecord.includes_terco && (
                     <tr>
                       <td className="p-2.5 font-medium text-slate-900">

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-06T17:43:27.753Z",
+  "generatedAt": "2026-10-06T17:58:12.327Z",
   "collections": [
     {
       "name": "users",
@@ -148,6 +148,12 @@
         {
           "name": "includes_terco",
           "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vacation_days",
+          "type": "number",
           "required": false,
           "system": false
         }
