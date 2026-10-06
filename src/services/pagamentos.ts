@@ -1,5 +1,10 @@
 import pb from '@/lib/pocketbase/client'
-import type { PagamentoRecord, PagamentoInput, StatusPagamento } from '@/types/pagamento'
+import type {
+  PagamentoRecord,
+  PagamentoInput,
+  PagamentoUpdateInput,
+  StatusPagamento,
+} from '@/types/pagamento'
 import { calculateValorLiquido } from '@/lib/calculator'
 
 export const pagamentosService = {
@@ -56,6 +61,46 @@ export const pagamentosService = {
     })
 
     return record
+  },
+
+  /**
+   * Update an existing payment record.
+   * Automatically recalculates Valor_Liquido with the exact calculation formulas.
+   */
+  async update(id: string, input: PagamentoUpdateInput): Promise<PagamentoRecord> {
+    const { valorLiquido } = calculateValorLiquido({
+      valorBase: input.Valor_Base,
+      tipoPagamento: input.Tipo_Pagamento,
+      diasGozadas: input.Dias_Ferias_Gozadas || 0,
+      diasVendidas: input.Dias_Ferias_Vendidas || 0,
+    })
+
+    const isFerias = input.Tipo_Pagamento === 'Férias'
+    const isSaldoFerias = input.Tipo_Pagamento === 'Saldo de Salário (pós-férias)'
+
+    const diasGozadas = isFerias || isSaldoFerias ? Number(input.Dias_Ferias_Gozadas || 0) : 0
+    const diasVendidas = isFerias ? Number(input.Dias_Ferias_Vendidas || 0) : 0
+
+    let formattedDate = input.Data_Pagamento
+    if (formattedDate && !formattedDate.includes('T') && !formattedDate.includes(' ')) {
+      formattedDate = `${formattedDate} 12:00:00.000Z`
+    }
+
+    const payload: Partial<PagamentoRecord> = {
+      Mes_Ano: input.Mes_Ano.trim(),
+      Data_Pagamento: formattedDate,
+      Tipo_Pagamento: input.Tipo_Pagamento,
+      Valor_Base: Number(input.Valor_Base),
+      Dias_Ferias_Gozadas: diasGozadas,
+      Dias_Ferias_Vendidas: diasVendidas,
+      Valor_Liquido: valorLiquido,
+    }
+
+    if (input.Status) {
+      payload.Status = input.Status
+    }
+
+    return pb.collection('pagamentos').update<PagamentoRecord>(id, payload)
   },
 
   /**

@@ -23,11 +23,12 @@ import {
   AlertCircle,
   Loader2,
   Palmtree,
-  Sparkles,
+  Pencil,
 } from 'lucide-react'
-import type { PagamentoRecord } from '@/types/pagamento'
+import type { PagamentoRecord, PagamentoUpdateInput } from '@/types/pagamento'
 import { formatCurrencyBRL, formatDatePtBR } from '@/lib/calculator'
 import { pagamentosService } from '@/services/pagamentos'
+import { EditPagamentoModal } from '@/components/EditPagamentoModal'
 import { useToast } from '@/hooks/use-toast'
 
 interface HistoricoPagamentosProps {
@@ -44,6 +45,7 @@ export const HistoricoPagamentos: React.FC<HistoricoPagamentosProps> = ({
   const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState('')
   const [recordToDelete, setRecordToDelete] = useState<PagamentoRecord | null>(null)
+  const [recordToEdit, setRecordToEdit] = useState<PagamentoRecord | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
 
@@ -94,6 +96,26 @@ export const HistoricoPagamentos: React.FC<HistoricoPagamentosProps> = ({
       })
     } finally {
       setUpdatingId(null)
+    }
+  }
+
+  // Action: Save edited payment
+  const handleSaveEdit = async (id: string, updated: PagamentoUpdateInput) => {
+    try {
+      await pagamentosService.update(id, updated)
+      toast({
+        title: 'Lançamento atualizado!',
+        description: `O lançamento de ${updated.Tipo_Pagamento} (${updated.Mes_Ano}) foi atualizado com sucesso.`,
+      })
+      onRefresh()
+    } catch (err: any) {
+      console.error(err)
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao atualizar',
+        description: err?.message || 'Não foi possível atualizar o lançamento.',
+      })
+      throw err
     }
   }
 
@@ -287,12 +309,25 @@ export const HistoricoPagamentos: React.FC<HistoricoPagamentosProps> = ({
                           </Button>
                         )}
 
+                        {/* "Editar" (Pencil icon button) */}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setRecordToEdit(p)}
+                          title="Editar lançamento"
+                          aria-label={`Editar lançamento de ${p.Tipo_Pagamento} (${p.Mes_Ano})`}
+                          className="h-8 w-8 p-0 text-slate-400 hover:text-slate-900 hover:bg-slate-100"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+
                         {/* "Excluir" (Trash icon button with confirmation dialog) */}
                         <Button
                           size="sm"
                           variant="ghost"
                           onClick={() => setRecordToDelete(p)}
                           title="Excluir lançamento"
+                          aria-label={`Excluir lançamento de ${p.Tipo_Pagamento} (${p.Mes_Ano})`}
                           className="h-8 w-8 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -351,6 +386,16 @@ export const HistoricoPagamentos: React.FC<HistoricoPagamentosProps> = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Payment Modal */}
+      <EditPagamentoModal
+        record={recordToEdit}
+        open={!!recordToEdit}
+        onOpenChange={(open) => {
+          if (!open) setRecordToEdit(null)
+        }}
+        onSave={handleSaveEdit}
+      />
     </>
   )
 }

@@ -31,6 +31,16 @@ export interface PagamentoInput {
   Dias_Ferias_Vendidas?: number
 }
 
+export interface PagamentoUpdateInput {
+  Mes_Ano: string
+  Data_Pagamento: string
+  Tipo_Pagamento: TipoPagamento
+  Valor_Base: number
+  Dias_Ferias_Gozadas?: number
+  Dias_Ferias_Vendidas?: number
+  Status?: StatusPagamento
+}
+
 export interface UserRecord {
   id: string
   email: string
