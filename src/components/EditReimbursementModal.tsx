@@ -66,9 +66,27 @@ export function EditReimbursementModal({
   const [totalAmountInput, setTotalAmountInput] = useState<string>('')
   const [amountPaidInput, setAmountPaidInput] = useState<string>('')
   const [status, setStatus] = useState<ReimbursementStatus>('pending')
+  const [paymentDateInput, setPaymentDateInput] = useState<string>('')
   const [autoStatus, setAutoStatus] = useState<boolean>(true)
   const [isSaving, setIsSaving] = useState<boolean>(false)
   const [formError, setFormError] = useState<string | null>(null)
+
+  // Helper para obter a data de hoje no fuso America/Sao_Paulo (YYYY-MM-DD)
+  const getTodayBrazil = (): string => {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date())
+  }
+
+  // Extrair YYYY-MM-DD de strings retornadas pelo PocketBase (ex: "2026-05-15 00:00:00.000Z")
+  const formatIsoToInputDate = (dateVal?: string): string => {
+    if (!dateVal) return ''
+    const match = dateVal.match(/^\d{4}-\d{2}-\d{2}/)
+    return match ? match[0] : ''
+  }
 
   // Populate form when modal opens or record changes
   useEffect(() => {
@@ -125,6 +143,7 @@ export function EditReimbursementModal({
           : '0,00',
       )
       setStatus(record.status || 'pending')
+      setPaymentDateInput(formatIsoToInputDate(record.payment_date))
       setAutoStatus(true)
       setFormError(null)
     }
@@ -160,11 +179,24 @@ export function EditReimbursementModal({
   }, [numericTotal, numericPaid])
 
   // Update status when autoStatus is true and computedStatus changes
+  // Comportamento inteligente: quando vira 'paid', se paymentDateInput estiver vazio, preenche com hoje
   useEffect(() => {
     if (autoStatus) {
       setStatus(computedStatus)
+      if (computedStatus === 'paid') {
+        setPaymentDateInput((prev) => (prev ? prev : getTodayBrazil()))
+      }
     }
   }, [autoStatus, computedStatus])
+
+  // Função auxiliar para mudar status manualmente via Select
+  const handleStatusChange = (newStatus: ReimbursementStatus) => {
+    setStatus(newStatus)
+    setAutoStatus(false)
+    if (newStatus === 'paid') {
+      setPaymentDateInput((prev) => (prev ? prev : getTodayBrazil()))
+    }
+  }
 
   // Quick recalculate total using Annual Formula com Proporcionalidade Completa
   const annualBreakdown = useMemo(() => {
@@ -222,6 +254,9 @@ export function EditReimbursementModal({
     const finalPeriod = referencePeriod.trim() || (finalYear ? String(finalYear) : undefined)
     const finalVacationDays = type === 'anual' ? numericVacationDays : 0
 
+    const trimmedPaymentDate = paymentDateInput.trim()
+    const finalPaymentDate = trimmedPaymentDate ? `${trimmedPaymentDate} 12:00:00.000Z` : null
+
     const payload: ReimbursementUpdateInput = {
       user: selectedUser || undefined,
       type,
@@ -236,6 +271,7 @@ export function EditReimbursementModal({
       total_amount: numericTotal,
       amount_paid: numericPaid,
       status,
+      payment_date: finalPaymentDate,
     }
 
     try {
@@ -639,10 +675,7 @@ export function EditReimbursementModal({
                 </Label>
                 <Select
                   value={status}
-                  onValueChange={(val) => {
-                    setStatus(val as ReimbursementStatus)
-                    setAutoStatus(false)
-                  }}
+                  onValueChange={(val) => handleStatusChange(val as ReimbursementStatus)}
                   disabled={isSaving}
                 >
                   <SelectTrigger id="editStatus" className="text-xs bg-white">
@@ -675,6 +708,73 @@ export function EditReimbursementModal({
                     Pendente
                   </Badge>
                 )}
+              </div>
+            </div>
+
+            {/* Campo Data da Quitação */}
+            <div className="pt-2 border-t border-slate-200/80">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label
+                      htmlFor="editPaymentDate"
+                      className="text-xs font-semibold text-slate-700 flex items-center gap-1.5"
+                    >
+                      <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                      Data da Quitação
+                    </Label>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentDateInput(getTodayBrazil())}
+                        disabled={isSaving}
+                        className="text-[10px] font-medium text-emerald-700 hover:underline"
+                      >
+                        Hoje
+                      </button>
+                      {paymentDateInput && (
+                        <>
+                          <span className="text-slate-300">•</span>
+                          <button
+                            type="button"
+                            onClick={() => setPaymentDateInput('')}
+                            disabled={isSaving}
+                            className="text-[10px] text-slate-500 hover:underline"
+                          >
+                            Limpar
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <Input
+                    id="editPaymentDate"
+                    type="date"
+                    value={paymentDateInput}
+                    onChange={(e) => setPaymentDateInput(e.target.value)}
+                    className="text-xs font-medium text-slate-900 bg-white"
+                    disabled={isSaving}
+                  />
+                </div>
+                <div className="text-[11px] text-slate-500 pt-1 sm:pt-4">
+                  {paymentDateInput ? (
+                    <span className="text-emerald-700 font-medium flex items-center gap-1">
+                      <span>✓</span>
+                      <span>
+                        Data definida:{' '}
+                        {(() => {
+                          const [y, m, d] = paymentDateInput.split('-')
+                          return y && m && d ? `${d}/${m}/${y}` : paymentDateInput
+                        })()}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">
+                      Vazio = não quitado ainda. Ao marcar como Pago, é preenchido com a data de
+                      hoje automaticamente.
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </div>

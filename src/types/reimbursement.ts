@@ -26,6 +26,7 @@ export interface ReimbursementRecord extends RecordModel {
   total_amount: number
   amount_paid?: number
   status: ReimbursementStatus
+  payment_date?: string
   created: string
   updated: string
   expand?: {
@@ -44,6 +45,7 @@ export interface ReimbursementAnnualInput {
   vacation_days?: number
   dissidio_amount: number
   amount_paid?: number
+  payment_date?: string
 }
 
 export interface ReimbursementMonthlyInput {
@@ -52,6 +54,7 @@ export interface ReimbursementMonthlyInput {
   base_salary?: number
   total_amount: number
   amount_paid?: number
+  payment_date?: string
 }
 
 export interface ReimbursementUpdateInput {
@@ -68,6 +71,7 @@ export interface ReimbursementUpdateInput {
   total_amount?: number
   amount_paid?: number
   status?: ReimbursementStatus
+  payment_date?: string | null
 }
 
 export type ReimbursementInput = ReimbursementAnnualInput

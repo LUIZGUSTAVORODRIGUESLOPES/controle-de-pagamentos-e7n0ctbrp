@@ -280,9 +280,9 @@ export default function Reimbursements() {
           ).toLowerCase()
           diff = keyA.localeCompare(keyB)
         } else if (filters.sortField === 'payment_date') {
-          // updated ou created
-          const dateA = new Date(a.updated || a.created || 0).getTime()
-          const dateB = new Date(b.updated || b.created || 0).getTime()
+          // payment_date com fallback para updated ou created
+          const dateA = new Date(a.payment_date || a.updated || a.created || 0).getTime()
+          const dateB = new Date(b.payment_date || b.updated || b.created || 0).getTime()
           diff = dateA - dateB
         } else if (filters.sortField === 'total_amount') {
           diff = (a.total_amount || 0) - (b.total_amount || 0)
@@ -943,7 +943,7 @@ export default function Reimbursements() {
                   filteredCount={pendingMonthlyList.length}
                   showTypeFilter={true}
                   showStatusFilter={true}
-                  showSortPaymentDate={false}
+                  showSortPaymentDate={true}
                 />
 
                 {isLoading ? (
@@ -999,6 +999,7 @@ export default function Reimbursements() {
                       <thead className="bg-slate-50 text-slate-700 font-semibold uppercase tracking-wider text-[11px] border-b border-slate-200">
                         <tr>
                           <th className="p-3">Período</th>
+                          <th className="p-3">Data Quitação</th>
                           <th className="p-3">Tipo</th>
                           <th className="p-3">Executivo / Usuário</th>
                           <th className="p-3 text-right">Salário Base</th>
@@ -1043,6 +1044,16 @@ export default function Reimbursements() {
                                     </span>
                                   )}
                                 </div>
+                              </td>
+
+                              <td className="p-3 whitespace-nowrap text-slate-700 font-medium">
+                                {item.payment_date ? (
+                                  formatDatePtBR(item.payment_date)
+                                ) : item.status === 'paid' ? (
+                                  <span className="text-slate-400 italic">Não informada</span>
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
                               </td>
 
                               <td className="p-3 whitespace-nowrap">
@@ -1715,7 +1726,13 @@ export default function Reimbursements() {
                           return (
                             <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
                               <td className="p-3 font-medium text-slate-700 whitespace-nowrap">
-                                {formatDatePtBR(item.updated || item.created)}
+                                {item.payment_date ? (
+                                  formatDatePtBR(item.payment_date)
+                                ) : item.status === 'paid' ? (
+                                  <span className="text-slate-400 italic">Não informada</span>
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
                               </td>
 
                               <td className="p-3 whitespace-nowrap">
@@ -2201,6 +2218,21 @@ export default function Reimbursements() {
                     : receiptRecord.status === 'partial'
                       ? 'Pagamento Parcial'
                       : 'Pendente'}
+                </span>
+              </div>
+              <div className="col-span-2 pt-2 border-t border-slate-200">
+                <span className="text-slate-500 font-medium mr-2">Data da Quitação:</span>
+                <span className="text-slate-900 font-bold">
+                  {receiptRecord.payment_date ? (
+                    formatDatePtBR(receiptRecord.payment_date)
+                  ) : (
+                    <span>
+                      {new Date().toLocaleDateString('pt-BR')}{' '}
+                      <span className="text-[10px] text-slate-500 font-normal">
+                        (Data de Emissão - Não informada no registro)
+                      </span>
+                    </span>
+                  )}
                 </span>
               </div>
             </div>

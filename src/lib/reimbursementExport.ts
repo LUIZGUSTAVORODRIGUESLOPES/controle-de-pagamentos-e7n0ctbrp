@@ -93,6 +93,7 @@ export function exportReimbursementsToCsv(
 
   const headers = [
     'Data de Criação',
+    'Data_Quitacao',
     'Tipo',
     'Período / Ano',
     'Executivo / Usuário',
@@ -113,6 +114,7 @@ export function exportReimbursementsToCsv(
 
   const rows = records.map((r) => {
     const dataCriacao = formatDatePtBR(r.created)
+    const dataQuitacao = r.payment_date ? formatDatePtBR(r.payment_date) : '-'
     const tipo = r.type === 'mensal' ? 'Mensal' : 'Anual'
     const periodo = r.reference_period || (r.reference_year ? String(r.reference_year) : '-')
     const usuario = r.expand?.user?.name || 'Executivo'
@@ -162,6 +164,7 @@ export function exportReimbursementsToCsv(
 
     return [
       escapeCsvField(dataCriacao),
+      escapeCsvField(dataQuitacao),
       escapeCsvField(tipo),
       escapeCsvField(periodo),
       escapeCsvField(usuario),

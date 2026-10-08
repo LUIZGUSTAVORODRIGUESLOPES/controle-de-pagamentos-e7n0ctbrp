@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-08T17:45:43.232Z",
+  "generatedAt": "2026-10-08T18:33:24.975Z",
   "collections": [
     {
       "name": "users",
@@ -154,6 +154,12 @@
         {
           "name": "vacation_days",
           "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "payment_date",
+          "type": "date",
           "required": false,
           "system": false
         }

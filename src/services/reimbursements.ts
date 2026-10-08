@@ -182,10 +182,14 @@ export const reimbursementsService = {
     id: string,
     status: ReimbursementStatus,
     amountPaid?: number,
+    paymentDate?: string | null,
   ): Promise<ReimbursementRecord> {
     const payload: Partial<ReimbursementRecord> = { status }
     if (amountPaid !== undefined) {
       payload.amount_paid = Math.round((Number(amountPaid) + Number.EPSILON) * 100) / 100
+    }
+    if (paymentDate !== undefined) {
+      payload.payment_date = paymentDate ? paymentDate : ''
     }
     return pb
       .collection('reimbursements')
@@ -203,6 +207,7 @@ export const reimbursementsService = {
   async registerPayment(
     reimbursement: ReimbursementRecord,
     paymentValueToAdd: number,
+    paymentDate?: string | null,
   ): Promise<ReimbursementRecord> {
     const currentPaid = Number(reimbursement.amount_paid || 0)
     const newAmountPaid =
@@ -218,14 +223,28 @@ export const reimbursementsService = {
       newStatus = 'pending'
     }
 
-    return pb.collection('reimbursements').update<ReimbursementRecord>(
-      reimbursement.id,
-      {
-        amount_paid: Math.max(0, newAmountPaid),
-        status: newStatus,
-      },
-      { expand: 'user' },
-    )
+    const payload: Partial<ReimbursementRecord> = {
+      amount_paid: Math.max(0, newAmountPaid),
+      status: newStatus,
+    }
+
+    if (paymentDate !== undefined) {
+      payload.payment_date = paymentDate ? paymentDate : ''
+    } else if (newStatus === 'paid' && !reimbursement.payment_date) {
+      // Formata data de hoje fuso America/Sao_Paulo (YYYY-MM-DD)
+      const now = new Date()
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(now)
+      payload.payment_date = parts
+    }
+
+    return pb
+      .collection('reimbursements')
+      .update<ReimbursementRecord>(reimbursement.id, payload, { expand: 'user' })
   },
 
   /**
@@ -264,6 +283,10 @@ export const reimbursementsService = {
     }
     if (input.status !== undefined) {
       payload.status = input.status
+    }
+    if (input.payment_date !== undefined) {
+      // PocketBase permite string ISO ou vazia "" para limpar data
+      payload.payment_date = input.payment_date ? input.payment_date : ''
     }
 
     return pb.collection('reimbursements').update<ReimbursementRecord>(id, payload, {
